@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 
-// Flash‑Lag Illusion — Multi‑Participant (centered flash, 3 trials each, leaderboard)
+// Flash-Lag Illusion — Multi-Participant (centered flash, 3 trials each, leaderboard)
 // Updates in this version:
-// • Keep per‑participant 3 trials, compute avg abs error, and **append to a leaderboard**.
+// • Keep per-participant 3 trials, compute avg abs error, and **append to a leaderboard**.
 // • After 3 trials, you can input another name and start a new participant **without resetting results**.
 // • Flash always appears at screen center; flash timing when moving dot crosses (centerX − flashLead).
 // • Accept answers even after the dot exits the screen (once flash happened). No looping/wrapping.
 // • Start/Next trial gating fixed; new "Start new participant" flow handled automatically.
-// • Extra self‑tests include leaderboard addition and target‑X math.
+// • Extra self-tests include leaderboard addition and target-X math.
+// • (NEW) Settings panel toggle button; controls are hidden by default
+// • (NEW) Only one response collected per trial
 
 export default function FlashLagGame() {
   // Canvas + animation refs
@@ -20,7 +22,7 @@ export default function FlashLagGame() {
   const t0Ref = useRef(0); // trial start timestamp
   const lastTsRef = useRef(0);
   const flashedRef = useRef(false);
-  const trueXAtFlashRef = useRef(null); // ground‑truth moving‑dot x when flash happens
+  const trueXAtFlashRef = useRef(null); // ground-truth moving-dot x when flash happens
   const flashHideAtRef = useRef(0);
 
   // UI state
@@ -28,6 +30,8 @@ export default function FlashLagGame() {
   const [isRunning, setIsRunning] = useState(false);
   const [trialIdx, setTrialIdx] = useState(0); // 0..2 for three trials per participant
   const [awaitingNext, setAwaitingNext] = useState(false); // after a response, wait for Next Trial click
+  const [showSettings, setShowSettings] = useState(false); // NEW: settings toggle
+  const [responseLocked, setResponseLocked] = useState(false); // NEW: single-response per trial
 
   // Parameters
   const [speed, setSpeed] = useState(280); // px/s
@@ -40,7 +44,7 @@ export default function FlashLagGame() {
   const [flashColor, setFlashColor] = useState("#f97316");
 
   // Data
-  const [results, setResults] = useState([]); // per‑trial rows for all participants
+  const [results, setResults] = useState([]); // per-trial rows for all participants
   const [summary, setSummary] = useState(null); // current participant summary { participant, average_abs_error_px }
   const [summaries, setSummaries] = useState([]); // all participants summaries
 
@@ -125,7 +129,7 @@ export default function FlashLagGame() {
   };
 
   const drawStage = (ctx, dpr) => {
-    // Border only (guideline removed per user request)
+    // Border only (guideline removed)
     const r = 16 * dpr;
     ctx.save();
     ctx.strokeStyle = "#1f2937";
@@ -173,6 +177,9 @@ export default function FlashLagGame() {
     trueXAtFlashRef.current = null;
     flashHideAtRef.current = 0;
 
+    // NEW: unlock response collection at the start of the trial
+    setResponseLocked(false);
+
     runningRef.current = true;
     setIsRunning(true);
     setAwaitingNext(false);
@@ -186,7 +193,7 @@ export default function FlashLagGame() {
       setMessage("Please enter a new participant name.");
       return;
     }
-    // Reset per‑participant state, keep global data
+    // Reset per-participant state, keep global data
     setSummary(null);
     setTrialIdx(0);
     setAwaitingNext(false);
@@ -195,6 +202,9 @@ export default function FlashLagGame() {
 
   // Handle response
   const onCanvasClick = (e) => {
+    // NEW: guard to allow only one response per trial
+    if (responseLocked) return;
+
     // Accept answers even after the dot exits, as long as the flash occurred
     if (!flashedRef.current || trueXAtFlashRef.current == null) {
       return; // ignore clicks before the flash
@@ -230,6 +240,9 @@ export default function FlashLagGame() {
 
     drawFeedback(truth, clickX);
 
+    // NEW: lock further responses for this trial
+    setResponseLocked(true);
+
     // Prepare next step
     const completedTrials = trialIdx + 1;
     setTrialIdx(completedTrials);
@@ -264,7 +277,7 @@ export default function FlashLagGame() {
 
     // Show flash location at its vertical offset (centered horizontally)
     drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
-    // Show true moving‑dot position at flash time
+    // Show true moving-dot position at flash time
     drawDot(ctx, truthX, y, dotRadius, dpr, dotColor);
 
     // Click marker
@@ -276,7 +289,7 @@ export default function FlashLagGame() {
     ctx.stroke();
     ctx.restore();
 
-    // Horizontal error bar (x‑only task)
+    // Horizontal error bar (x-only task)
     ctx.save();
     ctx.strokeStyle = "#e5e7eb";
     ctx.setLineDash([6 * dpr, 6 * dpr]);
@@ -327,7 +340,7 @@ export default function FlashLagGame() {
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const round2 = (v) => Math.round(v * 100) / 100;
 
-  // Pure helpers so we can self‑test them
+  // Pure helpers so we can self-test them
   function computeTargetX(w, lead) {
     return w / 2 - lead;
   }
@@ -371,7 +384,7 @@ export default function FlashLagGame() {
     URL.revokeObjectURL(url);
   };
 
-  // One‑time initial paint + self‑tests
+  // One-time initial paint + self-tests
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -392,7 +405,7 @@ export default function FlashLagGame() {
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
       <div className="w-full max-w-6xl px-4">
-        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">Flash‑Lag Illusion — Multi‑Participant Demo</h1>
+        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">Flash-Lag Illusion</h1>
         <p className="text-slate-300 mb-4">A dot moves left to right. A second dot briefly flashes at the <strong>screen center</strong>. Click where you believe the moving dot was at that instant.</p>
 
         <div className="grid lg:grid-cols-3 gap-4 mb-4">
@@ -422,6 +435,14 @@ export default function FlashLagGame() {
                   Start new participant
                 </button>
                 <button onClick={reset} className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 shadow">Reset all</button>
+
+                {/* NEW: Settings toggle */}
+                <button
+                  onClick={() => setShowSettings((s) => !s)}
+                  className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 shadow"
+                >
+                  Settings
+                </button>
               </div>
               <div className="text-sm text-slate-300">
                 {summary && trialIdx >= 3 ? (
@@ -436,8 +457,8 @@ export default function FlashLagGame() {
               <canvas
                 ref={canvasRef}
                 onClick={onCanvasClick}
-                className="block cursor-crosshair select-none"
-                aria-label="Flash‑lag illusion canvas"
+                className={`block select-none ${responseLocked ? "cursor-not-allowed" : "cursor-crosshair"}`} // NEW: visual cue after response
+                aria-label="Flash-lag illusion canvas"
               />
             </div>
 
@@ -450,27 +471,29 @@ export default function FlashLagGame() {
                 Export CSV (all)
               </button>
               <span className={`text-xs ${selfTestStatus === "passed" ? "text-emerald-400" : selfTestStatus === "failed" ? "text-rose-400" : "text-slate-400"}`}>
-                Self‑tests: {selfTestStatus}
+                Self-tests: {selfTestStatus}
               </span>
               <div className="text-xs text-slate-400">{message}</div>
             </div>
           </div>
 
-          {/* Controls */}
-          <div className="bg-slate-800/60 rounded-2xl p-4 shadow">
-            <h2 className="text-lg font-semibold mb-3">Controls</h2>
-            <div className="space-y-3 text-sm">
-              <LabeledRange label={`Speed: ${speed} px/s`} min={80} max={600} step={10} value={speed} onChange={setSpeed} />
-              <LabeledRange label={`Flash lead: ${flashLead} px`} min={-60} max={200} step={5} value={flashLead} onChange={setFlashLead} />
-              <LabeledRange label={`Flash vertical offset: ${flashYOffset} px`} min={-100} max={100} step={5} value={flashYOffset} onChange={setFlashYOffset} />
-              <LabeledRange label={`Flash duration: ${flashDuration} ms`} min={20} max={200} step={5} value={flashDuration} onChange={setFlashDuration} />
-              <LabeledRange label={`Dot radius: ${dotRadius} px`} min={4} max={16} step={1} value={dotRadius} onChange={setDotRadius} />
-              <div className="grid grid-cols-2 gap-2 pt-2">
-                <ColorSwatch label="Dot" value={dotColor} onChange={setDotColor} />
-                <ColorSwatch label="Flash" value={flashColor} onChange={setFlashColor} />
+          {/* Controls (wrapped in Settings toggle) */}
+          {showSettings && (
+            <div className="bg-slate-800/60 rounded-2xl p-4 shadow">
+              <h2 className="text-lg font-semibold mb-3">Controls</h2>
+              <div className="space-y-3 text-sm">
+                <LabeledRange label={`Speed: ${speed} px/s`} min={80} max={600} step={10} value={speed} onChange={setSpeed} />
+                <LabeledRange label={`Flash lead: ${flashLead} px`} min={-60} max={200} step={5} value={flashLead} onChange={setFlashLead} />
+                <LabeledRange label={`Flash vertical offset: ${flashYOffset} px`} min={-100} max={100} step={5} value={flashYOffset} onChange={setFlashYOffset} />
+                <LabeledRange label={`Flash duration: ${flashDuration} ms`} min={20} max={200} step={5} value={flashDuration} onChange={setFlashDuration} />
+                <LabeledRange label={`Dot radius: ${dotRadius} px`} min={4} max={16} step={1} value={dotRadius} onChange={setDotRadius} />
+                <div className="grid grid-cols-2 gap-2 pt-2">
+                  <ColorSwatch label="Dot" value={dotColor} onChange={setDotColor} />
+                  <ColorSwatch label="Flash" value={flashColor} onChange={setFlashColor} />
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Results + Leaderboard */}
@@ -481,12 +504,12 @@ export default function FlashLagGame() {
   );
 
   // --------------------------
-  // Lightweight self‑tests
+  // Lightweight self-tests
   // --------------------------
   function runSelfTests() {
     try {
       // math helpers
-      console.assert(clamp(5, 0, 10) === 5, "clamp in‑range");
+      console.assert(clamp(5, 0, 10) === 5, "clamp in-range");
       console.assert(clamp(-1, 0, 10) === 0, "clamp low bound");
       console.assert(clamp(11, 0, 10) === 10, "clamp high bound");
       console.assert(round2(1.2345) === 1.23, "round2 works");
@@ -495,7 +518,7 @@ export default function FlashLagGame() {
       console.assert(computeTargetX(900, 80) === 370, "targetX 900, lead 80 => 450-80");
       console.assert(computeTargetX(900, -60) === 510, "targetX 900, lead -60 => 450+60");
 
-      // start‑button logic
+      // start-button logic
       console.assert(canStartTrialLogic(0, false, false, "A") === true, "trial0 start enabled");
       console.assert(canStartTrialLogic(1, false, true, "A") === true, "trial1 next enabled after response");
       console.assert(canStartTrialLogic(1, false, false, "A") === false, "trial1 next disabled before response");
@@ -511,7 +534,7 @@ export default function FlashLagGame() {
 
       return true;
     } catch (e) {
-      console.error("Self‑tests failed:", e);
+      console.error("Self-tests failed:", e);
       return false;
     }
   }
