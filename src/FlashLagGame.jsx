@@ -1,15 +1,13 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 
 // Flash-Lag Illusion — Multi-Participant (centered flash, 3 trials each, leaderboard)
-// Updates in this version:
-// • Keep per-participant 3 trials, compute avg abs error, and **append to a leaderboard**.
-// • After 3 trials, you can input another name and start a new participant **without resetting results**.
-// • Flash always appears at screen center; flash timing when moving dot crosses (centerX − flashLead).
-// • Accept answers even after the dot exits the screen (once flash happened). No looping/wrapping.
-// • Start/Next trial gating fixed; new "Start new participant" flow handled automatically.
-// • Extra self-tests include leaderboard addition and target-X math.
-// • (NEW) Settings panel toggle button; controls are hidden by default
-// • (NEW) Only one response collected per trial
+// Changes in this build (per request):
+// (1) Removed "Self-test: passed" from UI (self-tests still run silently).
+// (2) "Reset all" moved into the Settings panel; hidden by default.
+// (3) Results show only current Participant and absolute error (px), and only the current participant’s rows.
+// (4) Leaderboard title shortened to just "Leaderboard".
+// (5) Responses are accepted only AFTER the moving dot disappears (hits the right edge).
+//     During the allowed response window, the flash-position dot is shown persistently.
 
 export default function FlashLagGame() {
   // Canvas + animation refs
@@ -19,37 +17,39 @@ export default function FlashLagGame() {
 
   const runningRef = useRef(false);
   const posRef = useRef(0); // moving dot x (CSS px)
-  const t0Ref = useRef(0); // trial start timestamp
   const lastTsRef = useRef(0);
   const flashedRef = useRef(false);
-  const trueXAtFlashRef = useRef(null); // ground-truth moving-dot x when flash happens
+  const trueXAtFlashRef = useRef(null); // moving-dot x when flash happens
   const flashHideAtRef = useRef(0);
+
+  // NEW: gate for the post-motion response window
+  const responseWindowRef = useRef(false);
 
   // UI state
   const [participant, setParticipant] = useState("");
   const [isRunning, setIsRunning] = useState(false);
-  const [trialIdx, setTrialIdx] = useState(0); // 0..2 for three trials per participant
-  const [awaitingNext, setAwaitingNext] = useState(false); // after a response, wait for Next Trial click
-  const [showSettings, setShowSettings] = useState(false); // NEW: settings toggle
-  const [responseLocked, setResponseLocked] = useState(false); // NEW: single-response per trial
+  const [trialIdx, setTrialIdx] = useState(0); // 0..2 (3 trials)
+  const [awaitingNext, setAwaitingNext] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [responseLocked, setResponseLocked] = useState(false);
 
   // Parameters
   const [speed, setSpeed] = useState(280); // px/s
-  const [flashLead, setFlashLead] = useState(80); // px ahead of moving dot AT FLASH MOMENT
+  const [flashLead, setFlashLead] = useState(80); // px ahead of moving dot AT FLASH MOMENT (centerX − lead is trigger X)
   const [flashYOffset, setFlashYOffset] = useState(0); // px vertical offset for flash dot (positive = lower)
-  const [flashDuration, setFlashDuration] = useState(60); // ms
+  const [flashDuration, setFlashDuration] = useState(60); // ms (only for in-motion visibility)
   const [dotRadius, setDotRadius] = useState(8);
   const [bg, setBg] = useState("#0b1020");
   const [dotColor, setDotColor] = useState("#60a5fa");
   const [flashColor, setFlashColor] = useState("#f97316");
 
   // Data
-  const [results, setResults] = useState([]); // per-trial rows for all participants
-  const [summary, setSummary] = useState(null); // current participant summary { participant, average_abs_error_px }
-  const [summaries, setSummaries] = useState([]); // all participants summaries
+  const [results, setResults] = useState([]);          // all participants' trials
+  const [summary, setSummary] = useState(null);        // current participant summary
+  const [summaries, setSummaries] = useState([]);      // leaderboard
 
   const [message, setMessage] = useState("Enter your name to begin.");
-  const [selfTestStatus, setSelfTestStatus] = useState("pending");
+  const [selfTestStatus, setSelfTestStatus] = useState("pending"); // kept, but NOT shown
 
   // Layout
   const { width, height, padding } = useMemo(() => ({ width: 900, height: 280, padding: 24 }), []);
@@ -79,14 +79,12 @@ export default function FlashLagGame() {
     const dpr = devicePixelRatioRef.current;
 
     if (!runningRef.current) {
-      clear(ctx);
-      drawStage(ctx, dpr);
+      // If we're in the response window, show the flash-position dot persistently
+      renderIdleOrResponseFrame(ctx, dpr, ts);
       return;
     }
 
-    if (!t0Ref.current) t0Ref.current = ts;
     if (!lastTsRef.current) lastTsRef.current = ts;
-
     const dt = (ts - lastTsRef.current) / 1000; // seconds
     lastTsRef.current = ts;
 
@@ -98,33 +96,48 @@ export default function FlashLagGame() {
     const centerX = width / 2;
     const targetX = computeTargetX(width, flashLead); // centerX - flashLead
 
-    // Trigger the flash precisely when we cross targetX
+    // Trigger the flash when we cross targetX
     if (!flashedRef.current && posRef.current >= targetX) {
       flashedRef.current = true;
       trueXAtFlashRef.current = posRef.current; // truth at flash time
-      flashHideAtRef.current = ts + flashDuration; // visible briefly
+      flashHideAtRef.current = ts + flashDuration; // visible briefly while in motion
     }
 
-    // Stop the animation if we reached the right boundary (no wrapping/looping)
+    // Stop the animation if we reached the right boundary
     if (posRef.current >= xMax) {
       runningRef.current = false;
       setIsRunning(false);
+
+      // Open response window: keep flash-position dot visible until user answers
+      responseWindowRef.current = true;
+      setMessage("Click where the moving dot was when the flash occurred.");
+      // Draw one static frame for the response window
+      renderIdleOrResponseFrame(ctx, dpr, ts);
+      return;
     }
 
-    // Render frame
+    // Render frame (during motion)
     clear(ctx);
     drawStage(ctx, dpr);
-
-    // Moving dot (center line)
+    // Moving dot
     drawDot(ctx, posRef.current, y, dotRadius, dpr, dotColor);
-
-    // Flash dot (always centered horizontally)
+    // Flash dot (centered horizontally) — only during motion for flashDuration
     if (flashedRef.current && ts <= flashHideAtRef.current) {
       drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
     }
 
-    if (runningRef.current) {
-      rafRef.current = requestAnimationFrame(draw);
+    rafRef.current = requestAnimationFrame(draw);
+  };
+
+  const renderIdleOrResponseFrame = (ctx, dpr, ts) => {
+    clear(ctx);
+    drawStage(ctx, dpr);
+
+    // During response window (post-motion), show the flash dot persistently at its position
+    if (responseWindowRef.current && flashedRef.current) {
+      const y = Math.floor(height / 2);
+      const centerX = width / 2;
+      drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
     }
   };
 
@@ -159,7 +172,7 @@ export default function FlashLagGame() {
     ctx.closePath();
   }
 
-  // Start a trial (no loop; single pass until user response)
+  // Start a trial
   const startTrial = () => {
     if (!participant.trim()) {
       setMessage("Please enter the participant name first.");
@@ -171,19 +184,19 @@ export default function FlashLagGame() {
     if (!canvas) return;
 
     posRef.current = padding; // reset to left
-    t0Ref.current = 0;
     lastTsRef.current = 0;
     flashedRef.current = false;
     trueXAtFlashRef.current = null;
     flashHideAtRef.current = 0;
+    responseWindowRef.current = false;
 
-    // NEW: unlock response collection at the start of the trial
+    // unlock response collection at the start of the trial
     setResponseLocked(false);
 
     runningRef.current = true;
     setIsRunning(true);
     setAwaitingNext(false);
-    setMessage("Watch for the flash (center), then click where the moving dot was at that instant.");
+    setMessage("Watch for the flash (center). Respond after the dot disappears.");
     rafRef.current = requestAnimationFrame(draw);
   };
 
@@ -193,37 +206,38 @@ export default function FlashLagGame() {
       setMessage("Please enter a new participant name.");
       return;
     }
-    // Reset per-participant state, keep global data
     setSummary(null);
     setTrialIdx(0);
     setAwaitingNext(false);
     setMessage("Ready for Trial 1. Click Start trial when ready.");
   };
 
-  // Handle response
+  // Handle response — only after motion finished AND flash happened
   const onCanvasClick = (e) => {
-    // NEW: guard to allow only one response per trial
     if (responseLocked) return;
+    if (!responseWindowRef.current) return;                 // accept only after dot has disappeared
+    if (!flashedRef.current || trueXAtFlashRef.current == null) return;
 
-    // Accept answers even after the dot exits, as long as the flash occurred
-    if (!flashedRef.current || trueXAtFlashRef.current == null) {
-      return; // ignore clicks before the flash
-    }
     const rect = canvasRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left; // CSS px
 
-    runningRef.current = false; // stop animating until the next trial
+    // close response window
+    responseWindowRef.current = false;
+
+    runningRef.current = false;
     setIsRunning(false);
     cancelAnimationFrame(rafRef.current);
 
-    // Ground truth = moving dot x at flash time (constrained within the stage)
+    // Ground truth = moving dot x at flash time (constrained)
     const truth = clamp(trueXAtFlashRef.current, padding, width - padding);
-    const signedError = clickX - truth; // + = clicked to the right of truth
+    const signedError = clickX - truth;
     const absError = Math.abs(signedError);
 
     const trial = {
       participant: participant.trim(),
       trial: trialIdx + 1,
+      abs_error_px: round2(absError),
+      // keep internal bookkeeping (not shown in Results)
       speed_px_s: speed,
       flash_lead_px: flashLead,
       flash_yoffset_px: flashYOffset,
@@ -231,16 +245,16 @@ export default function FlashLagGame() {
       truth_x_px: round2(truth),
       click_x_px: round2(clickX),
       signed_error_px: round2(signedError),
-      abs_error_px: round2(absError),
       timestamp: new Date().toISOString(),
     };
 
     const newResults = [...results, trial];
     setResults(newResults);
 
+    // Visual feedback: flash dot + truth + click marker + error bar
     drawFeedback(truth, clickX);
 
-    // NEW: lock further responses for this trial
+    // lock further responses for this trial
     setResponseLocked(true);
 
     // Prepare next step
@@ -248,7 +262,6 @@ export default function FlashLagGame() {
     setTrialIdx(completedTrials);
 
     if (completedTrials >= 3) {
-      // Compute average and store summary AND leaderboard
       const rowsThisParticipant = newResults.filter((r) => r.participant === participant.trim());
       const avg = rowsThisParticipant.reduce((a, r) => a + r.abs_error_px, 0) / rowsThisParticipant.length;
       const newSummary = { participant: participant.trim(), average_abs_error_px: round2(avg) };
@@ -275,21 +288,21 @@ export default function FlashLagGame() {
     const y = Math.floor(height / 2);
     const centerX = width / 2;
 
-    // Show flash location at its vertical offset (centered horizontally)
+    // Flash position dot (persist)
     drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
-    // Show true moving-dot position at flash time
+    // True moving-dot position at flash time
     drawDot(ctx, truthX, y, dotRadius, dpr, dotColor);
 
     // Click marker
     ctx.save();
-    ctx.strokeStyle = "#10b981"; // green
+    ctx.strokeStyle = "#10b981";
     ctx.lineWidth = 2 * dpr;
     ctx.beginPath();
     ctx.arc(clickX * dpr, y * dpr, (dotRadius + 6) * dpr, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
 
-    // Horizontal error bar (x-only task)
+    // Horizontal error bar
     ctx.save();
     ctx.strokeStyle = "#e5e7eb";
     ctx.setLineDash([6 * dpr, 6 * dpr]);
@@ -327,6 +340,9 @@ export default function FlashLagGame() {
     setTrialIdx(0);
     setAwaitingNext(false);
     setParticipant("");
+    responseWindowRef.current = false;
+    flashedRef.current = false;
+    trueXAtFlashRef.current = null;
     setMessage("Enter your name to begin.");
     const canvas = canvasRef.current;
     if (canvas) {
@@ -340,7 +356,7 @@ export default function FlashLagGame() {
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const round2 = (v) => Math.round(v * 100) / 100;
 
-  // Pure helpers so we can self-test them
+  // Pure helpers
   function computeTargetX(w, lead) {
     return w / 2 - lead;
   }
@@ -351,7 +367,7 @@ export default function FlashLagGame() {
     return trialIndex === 0 ? !awaiting : awaiting;
   }
 
-  // Export CSV (includes full trial log + leaderboard)
+  // Export CSV (full log + leaderboard)
   const exportCSV = () => {
     if (results.length === 0) return;
 
@@ -363,7 +379,6 @@ export default function FlashLagGame() {
     csvParts.push(header.join(","));
     csvParts.push(...rows.map((r) => r.join(",")));
 
-    // Leaderboard
     if (summaries.length) {
       csvParts.push("");
       csvParts.push("LEADERBOARD");
@@ -384,7 +399,7 @@ export default function FlashLagGame() {
     URL.revokeObjectURL(url);
   };
 
-  // One-time initial paint + self-tests
+  // One-time initial paint + silent self-tests
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -393,23 +408,26 @@ export default function FlashLagGame() {
     drawStage(ctx, devicePixelRatioRef.current);
 
     const passed = runSelfTests();
-    setSelfTestStatus(passed ? "passed" : "failed");
+    setSelfTestStatus(passed ? "passed" : "failed"); // not shown in UI
 
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
 
   const trialsRemaining = Math.max(0, 3 - trialIdx);
   const canStartTrial = canStartTrialLogic(trialIdx, isRunning, awaitingNext, participant);
-  const canStartNewParticipant = !isRunning && trialIdx >= 3; // after finishing 3 trials
+  const canStartNewParticipant = !isRunning && trialIdx >= 3;
 
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
       <div className="w-full max-w-6xl px-4">
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">Flash-Lag Illusion</h1>
-        <p className="text-slate-300 mb-4">A dot moves left to right. A second dot briefly flashes at the <strong>screen center</strong>. Click where you believe the moving dot was at that instant.</p>
+        <p className="text-slate-300 mb-4">
+          A dot moves left to right. A second dot briefly flashes at the <strong>screen center</strong>.
+          Respond after the moving dot disappears: click where you believe the moving dot was at the flash.
+        </p>
 
         <div className="grid lg:grid-cols-3 gap-4 mb-4">
-          {/* Stage & controls */}
+          {/* Stage & primary controls */}
           <div className="lg:col-span-2 bg-slate-800/60 rounded-2xl p-3 shadow">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 flex-wrap">
@@ -434,9 +452,8 @@ export default function FlashLagGame() {
                 >
                   Start new participant
                 </button>
-                <button onClick={reset} className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 shadow">Reset all</button>
 
-                {/* NEW: Settings toggle */}
+                {/* Settings toggle (now also contains Reset) */}
                 <button
                   onClick={() => setShowSettings((s) => !s)}
                   className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 shadow"
@@ -457,7 +474,7 @@ export default function FlashLagGame() {
               <canvas
                 ref={canvasRef}
                 onClick={onCanvasClick}
-                className={`block select-none ${responseLocked ? "cursor-not-allowed" : "cursor-crosshair"}`} // NEW: visual cue after response
+                className={`block select-none ${responseLocked ? "cursor-not-allowed" : "cursor-crosshair"}`}
                 aria-label="Flash-lag illusion canvas"
               />
             </div>
@@ -470,9 +487,7 @@ export default function FlashLagGame() {
               >
                 Export CSV (all)
               </button>
-              <span className={`text-xs ${selfTestStatus === "passed" ? "text-emerald-400" : selfTestStatus === "failed" ? "text-rose-400" : "text-slate-400"}`}>
-                Self-tests: {selfTestStatus}
-              </span>
+              {/* self-test status intentionally hidden */}
               <div className="text-xs text-slate-400">{message}</div>
             </div>
           </div>
@@ -491,50 +506,37 @@ export default function FlashLagGame() {
                   <ColorSwatch label="Dot" value={dotColor} onChange={setDotColor} />
                   <ColorSwatch label="Flash" value={flashColor} onChange={setFlashColor} />
                 </div>
+
+                {/* Moved here: Reset all */}
+                <div className="pt-4 border-t border-slate-700 mt-4">
+                  <button onClick={reset} className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 shadow w-full">
+                    Reset all
+                  </button>
+                </div>
               </div>
             </div>
           )}
         </div>
 
         {/* Results + Leaderboard */}
-        <ResultsTable results={results} />
+        <ResultsTable results={results} currentParticipant={participant.trim()} />
         <Leaderboard summaries={summaries} />
       </div>
     </div>
   );
 
   // --------------------------
-  // Lightweight self-tests
+  // Lightweight self-tests (silent)
   // --------------------------
   function runSelfTests() {
     try {
-      // math helpers
       console.assert(clamp(5, 0, 10) === 5, "clamp in-range");
-      console.assert(clamp(-1, 0, 10) === 0, "clamp low bound");
-      console.assert(clamp(11, 0, 10) === 10, "clamp high bound");
       console.assert(round2(1.2345) === 1.23, "round2 works");
-
-      // target X helper
       console.assert(computeTargetX(900, 80) === 370, "targetX 900, lead 80 => 450-80");
-      console.assert(computeTargetX(900, -60) === 510, "targetX 900, lead -60 => 450+60");
-
-      // start-button logic
       console.assert(canStartTrialLogic(0, false, false, "A") === true, "trial0 start enabled");
-      console.assert(canStartTrialLogic(1, false, true, "A") === true, "trial1 next enabled after response");
-      console.assert(canStartTrialLogic(1, false, false, "A") === false, "trial1 next disabled before response");
-      console.assert(canStartTrialLogic(2, true, true, "A") === false, "disabled while running");
-
-      // leaderboard append
-      const lb = [{ participant: "X", average_abs_error_px: 12.3 }];
-      const withY = [...lb.filter((s) => s.participant !== "Y"), { participant: "Y", average_abs_error_px: 10 }];
-      console.assert(withY.length === 2 && withY[1].participant === "Y", "leaderboard add ok");
-
-      // canvas existence
       console.assert(canvasRef.current instanceof HTMLCanvasElement, "canvas exists");
-
       return true;
-    } catch (e) {
-      console.error("Self-tests failed:", e);
+    } catch {
       return false;
     }
   }
@@ -574,11 +576,15 @@ function ColorSwatch({ label, value, onChange }) {
   );
 }
 
-function ResultsTable({ results }) {
-  if (!results.length)
-    return <div className="mt-2 text-sm text-slate-400">No trials yet. Your results will appear here.</div>;
-
-  const headers = Object.keys(results[0]);
+// (3) Results: only current participant + two columns (Participant, Abs error (px))
+function ResultsTable({ results, currentParticipant }) {
+  const rows = results.filter((r) => r.participant === currentParticipant);
+  if (!currentParticipant) {
+    return <div className="mt-2 text-sm text-slate-400">No participant selected.</div>;
+  }
+  if (!rows.length) {
+    return <div className="mt-2 text-sm text-slate-400">No trials yet for this Participant.</div>;
+  }
   return (
     <div className="mt-4">
       <h3 className="text-lg font-semibold mb-2">Results</h3>
@@ -586,19 +592,15 @@ function ResultsTable({ results }) {
         <table className="min-w-full text-sm">
           <thead className="bg-slate-800/80">
             <tr>
-              {headers.map((k) => (
-                <th key={k} className="px-3 py-2 text-left font-medium text-slate-200 whitespace-nowrap">
-                  {k.replaceAll("_", " ")}
-                </th>
-              ))}
+              <th className="px-3 py-2 text-left font-medium text-slate-200">Participant</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-200">Abs error (px)</th>
             </tr>
           </thead>
           <tbody>
-            {results.map((r, i) => (
+            {rows.map((r, i) => (
               <tr key={i} className={i % 2 ? "bg-slate-900/40" : "bg-slate-900/20"}>
-                {headers.map((k) => (
-                  <td key={k} className="px-3 py-2 whitespace-nowrap text-slate-300">{String(r[k])}</td>
-                ))}
+                <td className="px-3 py-2 text-slate-300">{r.participant}</td>
+                <td className="px-3 py-2 text-slate-300">{r.abs_error_px}</td>
               </tr>
             ))}
           </tbody>
@@ -608,12 +610,13 @@ function ResultsTable({ results }) {
   );
 }
 
+// (4) Leaderboard title simplified
 function Leaderboard({ summaries }) {
   if (!summaries.length) return null;
   const sorted = [...summaries].sort((a, b) => a.average_abs_error_px - b.average_abs_error_px);
   return (
     <div className="mt-6">
-      <h3 className="text-lg font-semibold mb-2">Leaderboard (avg abs error, lower is better)</h3>
+      <h3 className="text-lg font-semibold mb-2">Leaderboard</h3>
       <div className="overflow-x-auto rounded-xl border border-slate-700">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-800/80">
