@@ -873,7 +873,7 @@ function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeS
   const center = size / 2;
   const padding = 16;
   const plotRadius = center - padding;
-  const referenceRadius = 10;
+  const referenceRadius = 6;
   const logDenominator = Math.log10((maxError || 1) + 1);
 
   return (
@@ -913,7 +913,7 @@ function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeS
               </circle>
             );
           })}
-          <circle cx={center} cy={center} r={referenceRadius} fill="#f87171" />
+          <circle cx={center} cy={center} r={referenceRadius} fill="rgba(248, 113, 113, 0.6)" />
         </svg>
       </div>
       <div className="text-xs text-slate-300 space-y-1">
