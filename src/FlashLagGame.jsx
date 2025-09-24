@@ -6,6 +6,8 @@ const ASPECT_RATIO = 280 / 900;
 const PACMAN_IDLE_MOUTH = 0.28; // radians, per-side opening when static
 const PACMAN_MIN_MOUTH = 0.12;
 const PACMAN_MAX_MOUTH = 0.5;
+const TARGET_PACMAN = "pacman";
+const TARGET_DOT = "dot";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -50,7 +52,8 @@ export default function FlashLagGame() {
   const [awaitingNext, setAwaitingNext] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [responseLocked, setResponseLocked] = useState(false);
-  const [mode, setMode] = useState(MODE_FLASH_LAG);
+  const [mode, setMode] = useState(MODE_DISAPPEARING);
+  const [targetShape, setTargetShape] = useState(TARGET_PACMAN);
 
   // Parameters
   const [speed, setSpeed] = useState(280); // px/s
@@ -239,8 +242,12 @@ export default function FlashLagGame() {
     drawStage(ctx, dpr);
     // Moving dot (hidden after disappearance)
     if (!(mode === MODE_DISAPPEARING && eventTriggeredRef.current)) {
-      const mouthAngle = getPacManMouth(ts);
-      drawPacMan(ctx, posRef.current, y, dotRadius, dpr, dotColor, mouthAngle);
+      if (targetShape === TARGET_PACMAN) {
+        const mouthAngle = getPacManMouth(ts);
+        drawPacMan(ctx, posRef.current, y, dotRadius, dpr, dotColor, mouthAngle);
+      } else {
+        drawDot(ctx, posRef.current, y, dotRadius, dpr, dotColor);
+      }
     }
     // Flash dot (centered horizontally) — only during motion for flashDuration
     if (mode === MODE_FLASH_LAG && eventTriggeredRef.current && ts <= flashHideAtRef.current) {
@@ -284,13 +291,13 @@ export default function FlashLagGame() {
 
   const getResponsePrompt = () =>
     mode === MODE_DISAPPEARING
-      ? "Click where the moving dot disappeared."
-      : "Click where the moving dot was when the flash occurred.";
+      ? "Click where the moving target disappeared."
+      : "Click where the moving target was when the flash occurred.";
 
   const getStartPrompt = () =>
     mode === MODE_DISAPPEARING
-      ? "Watch the moving dot. Respond after it disappears."
-      : "Watch for the flash (center). Respond after the dot disappears.";
+      ? "Watch the moving target. Respond after it disappears."
+      : "Watch for the flash (center). Respond after the target disappears.";
 
   // Start a trial
   const startTrial = () => {
@@ -358,6 +365,7 @@ export default function FlashLagGame() {
       participant: participant.trim(),
       trial: trialIdx + 1,
       mode,
+      target_shape: targetShape,
       abs_error_px: round2(absError),
       // keep internal bookkeeping (not shown in Results)
       speed_px_s: speed,
@@ -414,8 +422,12 @@ export default function FlashLagGame() {
     if (mode === MODE_FLASH_LAG) {
       drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
     }
-    // True moving-dot position at event time (Pac-Man)
-    drawPacMan(ctx, truthX, y, dotRadius, dpr, dotColor, PACMAN_IDLE_MOUTH);
+    // True moving-dot position at event time
+    if (targetShape === TARGET_PACMAN) {
+      drawPacMan(ctx, truthX, y, dotRadius, dpr, dotColor, PACMAN_IDLE_MOUTH);
+    } else {
+      drawDot(ctx, truthX, y, dotRadius, dpr, dotColor);
+    }
 
     // Click marker
     ctx.save();
@@ -511,10 +523,12 @@ export default function FlashLagGame() {
   const canStartTrial = canStartTrialLogic(trialIdx, isRunning, awaitingNext, participant);
   const canStartNewParticipant = !isRunning && trialIdx >= 3;
   const leadLabel = mode === MODE_DISAPPEARING ? `Disappearing offset: ${flashLead} px` : `Flash lead: ${flashLead} px`;
+  const targetLabel = targetShape === TARGET_PACMAN ? "Pac-Man target" : "dot";
+  const targetSubject = targetShape === TARGET_PACMAN ? "Pac-Man" : "dot";
   const introCopy =
     mode === MODE_FLASH_LAG
-      ? "Flash-lag mode: A dot moves left to right while a second dot briefly flashes at the center. After it finishes moving, click where you believe the moving dot was at the flash."
-      : "Disappearing mode: A single dot moves left to right and vanishes at the chosen offset. Click where you believe the moving dot disappeared.";
+      ? `Flash-lag mode: The ${targetLabel} moves left to right while a second dot briefly flashes at the center. After it finishes moving, click where you believe the ${targetSubject} was at the flash.`
+      : `Disappearing mode: The ${targetLabel} moves left to right and vanishes at the chosen offset. Click where you believe the ${targetSubject} disappeared.`;
 
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
@@ -607,6 +621,25 @@ export default function FlashLagGame() {
                       className={`px-3 py-2 rounded-lg border ${mode === MODE_DISAPPEARING ? "bg-emerald-500/20 border-emerald-400" : "bg-slate-900/40 border-slate-700 hover:border-slate-500"}`}
                     >
                       Disappearing
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-300 mb-2 select-none">Target</div>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setTargetShape(TARGET_PACMAN)}
+                      className={`px-3 py-2 rounded-lg border ${targetShape === TARGET_PACMAN ? "bg-yellow-300/20 border-yellow-300 text-yellow-200" : "bg-slate-900/40 border-slate-700 hover:border-slate-500"}`}
+                    >
+                      Pac-Man
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTargetShape(TARGET_DOT)}
+                      className={`px-3 py-2 rounded-lg border ${targetShape === TARGET_DOT ? "bg-emerald-500/20 border-emerald-400" : "bg-slate-900/40 border-slate-700 hover:border-slate-500"}`}
+                    >
+                      Dot
                     </button>
                   </div>
                 </div>
