@@ -1,17 +1,14 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 
 // Flash-Lag Illusion — Multi-Participant (centered flash, 3 trials each, leaderboard)
-// Changes in this build (per request):
-// (1) Removed "Self-test: passed" from UI (self-tests still run silently).
-// (2) "Reset all" moved into the Settings panel; hidden by default.
-// (3) Results show only current Participant and absolute error (px), and only the current participant’s rows.
-// (4) Leaderboard title shortened to just "Leaderboard".
-// (5) Responses are accepted only AFTER the moving dot disappears (hits the right edge).
-//     During the allowed response window, the flash-position dot is shown persistently.
+// Responsive edition:
+// - Canvas resizes with its container via ResizeObserver
+// - Positions are scaled on resize so running trials don't jump
 
 export default function FlashLagGame() {
   // Canvas + animation refs
   const canvasRef = useRef(null);
+  const stageWrapRef = useRef(null);               // NEW: wrapper to measure available width
   const rafRef = useRef(0);
   const devicePixelRatioRef = useRef(1);
 
@@ -51,20 +48,68 @@ export default function FlashLagGame() {
   const [message, setMessage] = useState("Enter your name to begin.");
   const [selfTestStatus, setSelfTestStatus] = useState("pending"); // kept, but NOT shown
 
-  // Layout
-  const { width, height, padding } = useMemo(() => ({ width: 900, height: 280, padding: 24 }), []);
+  // Layout (responsive)
+  const padding = 24;
+  // Maintain the original aspect ratio (~900x280)
+  const ASPECT = 280 / 900;
+  const [stageSize, setStageSize] = useState({ width: 900, height: 280 });
 
-  // Resize canvas for DPR crispness
+  // Observe wrapper width & update canvas size responsively
+  useEffect(() => {
+    const el = stageWrapRef.current;
+    if (!el) return;
+
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const wrapW = Math.max(320, entry.contentRect.width); // avoid too small
+        const newWidth = Math.round(wrapW);
+        const newHeight = Math.round(newWidth * ASPECT);
+
+        setStageSize((prev) => {
+          // Scale any in-flight x positions so animation/feedback stays aligned
+          if (prev && prev.width !== newWidth) {
+            const prevPlayable = Math.max(1, prev.width - padding * 2);
+            const newPlayable  = Math.max(1, newWidth - padding * 2);
+            const scale = newPlayable / prevPlayable;
+
+            posRef.current = padding + (posRef.current - padding) * scale;
+            if (trueXAtFlashRef.current != null) {
+              trueXAtFlashRef.current = padding + (trueXAtFlashRef.current - padding) * scale;
+            }
+          }
+          return { width: newWidth, height: newHeight };
+        });
+      }
+    });
+
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Resize canvas for DPR crispness whenever stageSize changes
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     devicePixelRatioRef.current = dpr;
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
-    canvas.style.width = width + "px";
-    canvas.style.height = height + "px";
-  }, [width, height, trialIdx]);
+    canvas.width = Math.floor(stageSize.width * dpr);
+    canvas.height = Math.floor(stageSize.height * dpr);
+    canvas.style.width = stageSize.width + "px";
+    canvas.style.height = stageSize.height + "px";
+
+    // Repaint current static frame when not animating
+    if (!runningRef.current) {
+      const ctx = canvas.getContext("2d");
+      clear(ctx);
+      drawStage(ctx, dpr);
+      // If in response window, keep flash dot visible
+      if (responseWindowRef.current && flashedRef.current) {
+        const y = Math.floor(stageSize.height / 2);
+        const centerX = stageSize.width / 2;
+        drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
+      }
+    }
+  }, [stageSize.width, stageSize.height, flashYOffset, dotRadius, flashColor, bg]);
 
   // Basic canvas helpers
   const clear = (ctx) => {
@@ -91,6 +136,7 @@ export default function FlashLagGame() {
     // Advance moving dot
     posRef.current += speed * dt;
 
+    const { width, height } = stageSize;
     const xMax = width - padding;
     const y = Math.floor(height / 2);
     const centerX = width / 2;
@@ -135,14 +181,15 @@ export default function FlashLagGame() {
 
     // During response window (post-motion), show the flash dot persistently at its position
     if (responseWindowRef.current && flashedRef.current) {
-      const y = Math.floor(height / 2);
-      const centerX = width / 2;
+      const y = Math.floor(stageSize.height / 2);
+      const centerX = stageSize.width / 2;
       drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
     }
   };
 
   const drawStage = (ctx, dpr) => {
     // Border only (guideline removed)
+    const { width, height } = stageSize;
     const r = 16 * dpr;
     ctx.save();
     ctx.strokeStyle = "#1f2937";
@@ -229,6 +276,7 @@ export default function FlashLagGame() {
     cancelAnimationFrame(rafRef.current);
 
     // Ground truth = moving dot x at flash time (constrained)
+    const { width } = stageSize;
     const truth = clamp(trueXAtFlashRef.current, padding, width - padding);
     const signedError = clickX - truth;
     const absError = Math.abs(signedError);
@@ -285,8 +333,8 @@ export default function FlashLagGame() {
     clear(ctx);
     drawStage(ctx, dpr);
 
-    const y = Math.floor(height / 2);
-    const centerX = width / 2;
+    const y = Math.floor(stageSize.height / 2);
+    const centerX = stageSize.width / 2;
 
     // Flash position dot (persist)
     drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
@@ -419,16 +467,20 @@ export default function FlashLagGame() {
 
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
-      <div className="w-full max-w-6xl px-4">
+      <div className="w-full px-4 max-w-none">
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">Flash-Lag Illusion</h1>
         <p className="text-slate-300 mb-4">
           A dot moves left to right. A second dot briefly flashes at the <strong>screen center</strong>.
           Respond after the moving dot disappears: click where you believe the moving dot was at the flash.
         </p>
 
-        <div className="grid lg:grid-cols-3 gap-4 mb-4">
+        <div
+  className={`grid gap-4 mb-4 ${showSettings ? "lg:grid-cols-3" : "lg:grid-cols-1"}`}
+>
           {/* Stage & primary controls */}
-          <div className="lg:col-span-2 bg-slate-800/60 rounded-2xl p-3 shadow">
+          <div
+  className={`${showSettings ? "lg:col-span-2" : ""} bg-slate-800/60 rounded-2xl p-3 shadow min-w-0`}
+>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <input
@@ -470,7 +522,8 @@ export default function FlashLagGame() {
               </div>
             </div>
 
-            <div className="rounded-2xl overflow-hidden border border-slate-700">
+            {/* Responsive wrapper measured by ResizeObserver */}
+            <div ref={stageWrapRef} className="rounded-2xl overflow-hidden border border-slate-700 w-full">
               <canvas
                 ref={canvasRef}
                 onClick={onCanvasClick}
