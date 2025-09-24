@@ -873,8 +873,8 @@ function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeS
   const center = size / 2;
   const padding = 16;
   const plotRadius = center - padding;
-  const scale = plotRadius / (maxError || 1);
   const referenceRadius = 10;
+  const logDenominator = Math.log10((maxError || 1) + 1);
 
   return (
     <div className="flex flex-col gap-3">
@@ -894,7 +894,9 @@ function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeS
             strokeWidth={1.5}
           />
           {points.map((point, idx) => {
-            const dist = Math.min(point.error * scale, plotRadius - 4);
+            const errorForLog = Math.max(point.error, 0);
+            const logScaled = logDenominator > 0 ? Math.log10(errorForLog + 1) / logDenominator : 0;
+            const dist = Math.min(logScaled * plotRadius, plotRadius - 4);
             const x = center + Math.cos(point.angle) * dist;
             const y = center + Math.sin(point.angle) * dist;
             return (
@@ -919,7 +921,7 @@ function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeS
           <span className="font-semibold text-slate-100">Reference dot:</span> {targetLabel} disappearance location (center).
         </div>
         <div>
-          <span className="font-semibold text-slate-100">Scale:</span> outer ring ≈ {round2(maxError)} px error (max observed).
+          <span className="font-semibold text-slate-100">Scale:</span> log radius — outer ring ≈ {round2(maxError)} px (max observed).
         </div>
         {disappearRange ? (
           <div>
