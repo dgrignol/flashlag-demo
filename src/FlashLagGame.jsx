@@ -615,12 +615,12 @@ export default function FlashLagGame() {
 
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
-      <div className="w-full max-w-6xl px-4 md:px-8 mx-auto">
+      <div className="w-full max-w-screen-2xl px-4 md:px-8 xl:px-16 mx-auto">
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">Flash-Lag Illusion</h1>
         <p className="text-slate-300 mb-4">{introCopy}</p>
 
         <div
-  className={`grid gap-4 mb-4 ${showSettings || showErrorCloud ? "lg:grid-cols-3" : "lg:grid-cols-1"}`}
+  className={`grid gap-4 mb-4 ${showSettings || showErrorCloud ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" : "lg:grid-cols-1"}`}
 >
           {/* Stage & primary controls */}
           <div
@@ -873,8 +873,8 @@ function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeS
   const center = size / 2;
   const padding = 16;
   const plotRadius = center - padding;
-  const scale = plotRadius / (maxError || 1);
-  const referenceRadius = 10;
+  const referenceRadius = 6;
+  const logDenominator = Math.log10((maxError || 1) + 1);
 
   return (
     <div className="flex flex-col gap-3">
@@ -894,7 +894,9 @@ function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeS
             strokeWidth={1.5}
           />
           {points.map((point, idx) => {
-            const dist = Math.min(point.error * scale, plotRadius - 4);
+            const errorForLog = Math.max(point.error, 0);
+            const logScaled = logDenominator > 0 ? Math.log10(errorForLog + 1) / logDenominator : 0;
+            const dist = Math.min(logScaled * plotRadius, plotRadius - 4);
             const x = center + Math.cos(point.angle) * dist;
             const y = center + Math.sin(point.angle) * dist;
             return (
@@ -911,7 +913,7 @@ function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeS
               </circle>
             );
           })}
-          <circle cx={center} cy={center} r={referenceRadius} fill="#f87171" />
+          <circle cx={center} cy={center} r={referenceRadius} fill="rgba(248, 113, 113, 0.6)" />
         </svg>
       </div>
       <div className="text-xs text-slate-300 space-y-1">
@@ -919,7 +921,7 @@ function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeS
           <span className="font-semibold text-slate-100">Reference dot:</span> {targetLabel} disappearance location (center).
         </div>
         <div>
-          <span className="font-semibold text-slate-100">Scale:</span> outer ring ≈ {round2(maxError)} px error (max observed).
+          <span className="font-semibold text-slate-100">Scale:</span> log radius — outer ring ≈ {round2(maxError)} px (max observed).
         </div>
         {disappearRange ? (
           <div>
