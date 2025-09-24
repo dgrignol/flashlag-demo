@@ -615,12 +615,12 @@ export default function FlashLagGame() {
 
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
-      <div className="w-full max-w-6xl px-4 md:px-8 mx-auto">
+      <div className="w-full max-w-screen-2xl px-4 md:px-8 xl:px-16 mx-auto">
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">Flash-Lag Illusion</h1>
         <p className="text-slate-300 mb-4">{introCopy}</p>
 
         <div
-  className={`grid gap-4 mb-4 ${showSettings || showErrorCloud ? "lg:grid-cols-3" : "lg:grid-cols-1"}`}
+  className={`grid gap-4 mb-4 ${showSettings || showErrorCloud ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" : "lg:grid-cols-1"}`}
 >
           {/* Stage & primary controls */}
           <div
