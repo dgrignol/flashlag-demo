@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const MODE_FLASH_LAG = "flash-lag";
 const MODE_DISAPPEARING = "disappearing";
@@ -30,6 +30,16 @@ function pickRandomOffset(min, max) {
   const raw = Math.random() * (hi - lo) + lo;
   const stepped = Math.round(raw / 5) * 5;
   return clamp(stepped, lo, hi);
+}
+
+function pseudoRandomAngle(seed) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0; // keep 32-bit int
+  }
+  const normalized = (Math.abs(hash) % 360) * (Math.PI / 180);
+  return normalized;
 }
 
 // Flash-Lag Illusion — Multi-Participant (centered flash, 3 trials each, leaderboard)
@@ -65,6 +75,7 @@ export default function FlashLagGame() {
   const [responseLocked, setResponseLocked] = useState(false);
   const [mode, setMode] = useState(MODE_DISAPPEARING);
   const [targetShape, setTargetShape] = useState(TARGET_PACMAN);
+  const [showErrorCloud, setShowErrorCloud] = useState(true);
 
   // Parameters
   const [speed, setSpeed] = useState(280); // px/s
@@ -570,6 +581,37 @@ export default function FlashLagGame() {
     mode === MODE_FLASH_LAG
       ? `Flash-lag mode: The ${targetLabel} moves left to right while a second dot briefly flashes at the center. After it finishes moving, click where you believe the ${targetSubject} was at the flash.`
       : `Disappearing mode: The ${targetLabel} moves left to right and vanishes at a random offset within the selected range. Click where you believe the ${targetSubject} disappeared.`;
+  const errorPoints = useMemo(() => {
+    if (!results.length) return [];
+    return results
+      .map((trial, index) => {
+        const error = typeof trial.abs_error_px === "number" ? trial.abs_error_px : Math.abs(trial.signed_error_px ?? 0);
+        if (!Number.isFinite(error)) return null;
+        const seed = `${trial.participant}-${trial.trial}-${trial.timestamp ?? ""}-${index}`;
+        const angle = pseudoRandomAngle(seed);
+        return {
+          error,
+          angle,
+          participant: trial.participant,
+          trialNumber: trial.trial,
+          mode: trial.mode,
+        };
+      })
+      .filter(Boolean);
+  }, [results]);
+
+  const maxErrorMagnitude = useMemo(() => {
+    if (!errorPoints.length) return 1;
+    return errorPoints.reduce((m, p) => Math.max(m, p.error), 1);
+  }, [errorPoints]);
+
+  const errorRangeSummary = useMemo(() => {
+    if (!results.length) return null;
+    const avail = results.filter((r) => typeof r.lead_px === "number");
+    if (!avail.length) return null;
+    const avg = avail.reduce((sum, r) => sum + r.lead_px, 0) / avail.length;
+    return { avg: round2(avg) };
+  }, [results]);
 
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
@@ -578,11 +620,11 @@ export default function FlashLagGame() {
         <p className="text-slate-300 mb-4">{introCopy}</p>
 
         <div
-  className={`grid gap-4 mb-4 ${showSettings ? "lg:grid-cols-3" : "lg:grid-cols-1"}`}
+  className={`grid gap-4 mb-4 ${showSettings || showErrorCloud ? "lg:grid-cols-3" : "lg:grid-cols-1"}`}
 >
           {/* Stage & primary controls */}
           <div
-  className={`${showSettings ? "lg:col-span-2" : ""} bg-slate-800/60 rounded-2xl p-3 shadow min-w-0`}
+  className={`${showSettings || showErrorCloud ? "lg:col-span-2" : ""} bg-slate-800/60 rounded-2xl p-3 shadow min-w-0`}
 >
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 flex-wrap">
@@ -636,8 +678,15 @@ export default function FlashLagGame() {
               />
             </div>
 
-            <div className="pt-3 flex items-center">
+            <div className="pt-3 flex items-center justify-between gap-3">
               <div className="text-xs text-slate-400">{message}</div>
+              <button
+                type="button"
+                onClick={() => setShowErrorCloud((v) => !v)}
+                className="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200"
+              >
+                {showErrorCloud ? "Hide" : "Show"} error cloud
+              </button>
             </div>
           </div>
 
@@ -749,6 +798,26 @@ export default function FlashLagGame() {
               </div>
             </div>
           )}
+
+          {showErrorCloud && (
+            <div className="bg-slate-800/60 rounded-2xl p-4 shadow flex flex-col">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold">Error cloud</h2>
+                <span className="text-xs text-slate-400">{errorPoints.length} samples</span>
+              </div>
+              {errorPoints.length ? (
+                <ErrorCloud
+                  points={errorPoints}
+                  maxError={maxErrorMagnitude}
+                  disappearRange={mode === MODE_DISAPPEARING ? disappearRangeRef.current : null}
+                  targetLabel={targetLabel}
+                  errorRangeSummary={errorRangeSummary}
+                />
+              ) : (
+                <div className="text-sm text-slate-400">No data yet. Run a few trials to populate the cloud.</div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Results + Leaderboard */}
@@ -796,6 +865,78 @@ function RangeField({ label, min, max, step, value, onChange }) {
         className="w-full"
       />
     </label>
+  );
+}
+
+function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeSummary }) {
+  const size = 260;
+  const center = size / 2;
+  const padding = 16;
+  const plotRadius = center - padding;
+  const scale = plotRadius / (maxError || 1);
+  const referenceRadius = 10;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="relative">
+        <svg
+          width={size}
+          height={size}
+          className="w-full max-w-xs"
+          viewBox={`0 0 ${size} ${size}`}
+        >
+          <circle
+            cx={center}
+            cy={center}
+            r={plotRadius}
+            fill="#0f172a"
+            stroke="#334155"
+            strokeWidth={1.5}
+          />
+          {points.map((point, idx) => {
+            const dist = Math.min(point.error * scale, plotRadius - 4);
+            const x = center + Math.cos(point.angle) * dist;
+            const y = center + Math.sin(point.angle) * dist;
+            return (
+              <circle
+                key={`${point.participant}-${point.trialNumber}-${idx}`}
+                cx={x}
+                cy={y}
+                r={4}
+                fill="rgba(96, 165, 250, 0.8)"
+              >
+                <title>
+                  {`${point.participant} • Trial ${point.trialNumber}\nError: ${point.error.toFixed(1)} px`}
+                </title>
+              </circle>
+            );
+          })}
+          <circle cx={center} cy={center} r={referenceRadius} fill="#f87171" />
+        </svg>
+      </div>
+      <div className="text-xs text-slate-300 space-y-1">
+        <div>
+          <span className="font-semibold text-slate-100">Reference dot:</span> {targetLabel} disappearance location (center).
+        </div>
+        <div>
+          <span className="font-semibold text-slate-100">Scale:</span> outer ring ≈ {round2(maxError)} px error (max observed).
+        </div>
+        {disappearRange ? (
+          <div>
+            <span className="font-semibold text-slate-100">Range sampled:</span> {disappearRange.min} to {disappearRange.max} px
+          </div>
+        ) : (
+          <div>
+            <span className="font-semibold text-slate-100">Flash trials:</span> plotted relative to flash-aligned truth.
+          </div>
+        )}
+        {errorRangeSummary && (
+          <div>
+            <span className="font-semibold text-slate-100">Average lead used:</span> {errorRangeSummary.avg} px
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
