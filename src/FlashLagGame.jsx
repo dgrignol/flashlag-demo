@@ -23,6 +23,15 @@ function canStartTrialLogic(trialIndex, isRun, awaiting, name) {
   return trialIndex === 0 ? !awaiting : awaiting;
 }
 
+function pickRandomOffset(min, max) {
+  const lo = Math.min(min, max);
+  const hi = Math.max(min, max);
+  if (hi === lo) return lo;
+  const raw = Math.random() * (hi - lo) + lo;
+  const stepped = Math.round(raw / 5) * 5;
+  return clamp(stepped, lo, hi);
+}
+
 // Flash-Lag Illusion — Multi-Participant (centered flash, 3 trials each, leaderboard)
 // Responsive edition:
 // - Canvas resizes with its container via ResizeObserver
@@ -41,6 +50,8 @@ export default function FlashLagGame() {
   const eventTriggeredRef = useRef(false); // true when flash/disappearance already occurred
   const eventXRef = useRef(null); // moving-dot x when event happens
   const flashHideAtRef = useRef(0);
+  const currentLeadRef = useRef(0);
+  const disappearRangeRef = useRef({ min: -80, max: 80 });
 
   // NEW: gate for the post-motion response window
   const responseWindowRef = useRef(false);
@@ -58,6 +69,7 @@ export default function FlashLagGame() {
   // Parameters
   const [speed, setSpeed] = useState(280); // px/s
   const [flashLead, setFlashLead] = useState(80); // px ahead of moving dot AT FLASH MOMENT (centerX − lead is trigger X)
+  const [disappearRange, setDisappearRange] = useState({ min: -80, max: 80 });
   const [flashYOffset, setFlashYOffset] = useState(0); // px vertical offset for flash dot (positive = lower)
   const [flashDuration, setFlashDuration] = useState(60); // ms (only for in-motion visibility)
   const [dotRadius, setDotRadius] = useState(10);
@@ -205,7 +217,7 @@ export default function FlashLagGame() {
     const xMax = width - padding;
     const y = Math.floor(height / 2);
     const centerX = width / 2;
-    const targetX = computeTargetX(width, flashLead); // centerX - flashLead
+    const targetX = computeTargetX(width, currentLeadRef.current); // centerX - lead
 
     // Trigger the event when we cross targetX
     if (!eventTriggeredRef.current && posRef.current >= targetX) {
@@ -317,6 +329,13 @@ export default function FlashLagGame() {
     flashHideAtRef.current = 0;
     responseWindowRef.current = false;
 
+    const leadForTrial =
+      mode === MODE_DISAPPEARING
+        ? pickRandomOffset(disappearRange.min, disappearRange.max)
+        : flashLead;
+    disappearRangeRef.current = { ...disappearRange };
+    currentLeadRef.current = leadForTrial;
+
     // unlock response collection at the start of the trial
     setResponseLocked(false);
 
@@ -369,7 +388,11 @@ export default function FlashLagGame() {
       abs_error_px: round2(absError),
       // keep internal bookkeeping (not shown in Results)
       speed_px_s: speed,
-      flash_lead_px: flashLead,
+      lead_px: round2(currentLeadRef.current),
+      disappear_range_min_px:
+        mode === MODE_DISAPPEARING ? disappearRangeRef.current.min : null,
+      disappear_range_max_px:
+        mode === MODE_DISAPPEARING ? disappearRangeRef.current.max : null,
       flash_yoffset_px: flashYOffset,
       flash_duration_ms: flashDuration,
       truth_x_px: round2(truth),
@@ -499,6 +522,7 @@ export default function FlashLagGame() {
       console.assert(computeTargetX(900, 80) === 370, "targetX 900, lead 80 => 450-80");
       console.assert(canStartTrialLogic(0, false, false, "A") === true, "trial0 start enabled");
       console.assert(canvasRef.current instanceof HTMLCanvasElement, "canvas exists");
+      console.assert(pickRandomOffset(10, 10) === 10, "constant offset range");
       return true;
     } catch {
       return false;
@@ -519,16 +543,33 @@ export default function FlashLagGame() {
     return () => cancelAnimationFrame(rafRef.current);
   }, [clear, drawStage, runSelfTests]);
 
+  useEffect(() => {
+    if (isRunning) return;
+    currentLeadRef.current =
+      mode === MODE_DISAPPEARING
+        ? (disappearRange.min + disappearRange.max) / 2
+        : flashLead;
+    if (mode === MODE_DISAPPEARING) {
+      disappearRangeRef.current = {
+        min: disappearRange.min,
+        max: disappearRange.max,
+      };
+    }
+  }, [mode, disappearRange.min, disappearRange.max, flashLead, isRunning]);
+
   const trialsRemaining = Math.max(0, 3 - trialIdx);
   const canStartTrial = canStartTrialLogic(trialIdx, isRunning, awaitingNext, participant);
   const canStartNewParticipant = !isRunning && trialIdx >= 3;
-  const leadLabel = mode === MODE_DISAPPEARING ? `Disappearing offset: ${flashLead} px` : `Flash lead: ${flashLead} px`;
+  const leadLabel =
+    mode === MODE_DISAPPEARING
+      ? `Disappearing offset range: ${disappearRange.min} to ${disappearRange.max} px`
+      : `Flash lead: ${flashLead} px`;
   const targetLabel = targetShape === TARGET_PACMAN ? "Pac-Man target" : "dot";
   const targetSubject = targetShape === TARGET_PACMAN ? "Pac-Man" : "dot";
   const introCopy =
     mode === MODE_FLASH_LAG
       ? `Flash-lag mode: The ${targetLabel} moves left to right while a second dot briefly flashes at the center. After it finishes moving, click where you believe the ${targetSubject} was at the flash.`
-      : `Disappearing mode: The ${targetLabel} moves left to right and vanishes at the chosen offset. Click where you believe the ${targetSubject} disappeared.`;
+      : `Disappearing mode: The ${targetLabel} moves left to right and vanishes at a random offset within the selected range. Click where you believe the ${targetSubject} disappeared.`;
 
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
@@ -644,11 +685,46 @@ export default function FlashLagGame() {
                   </div>
                 </div>
                 <LabeledRange label={`Speed: ${speed} px/s`} min={80} max={600} step={10} value={speed} onChange={setSpeed} />
-                <LabeledRange label={leadLabel} min={-60} max={200} step={5} value={flashLead} onChange={setFlashLead} />
-                {mode === MODE_DISAPPEARING && (
-                  <div className="text-xs text-slate-400">
-                    Offset is measured from the screen center (positive = dot disappears before center).
+                {mode === MODE_DISAPPEARING ? (
+                  <div className="space-y-2">
+                    <RangeField
+                      label="Disappearing offset minimum"
+                      value={disappearRange.min}
+                      min={-200}
+                      max={200}
+                      step={5}
+                      onChange={(val) =>
+                        setDisappearRange((prev) => {
+                          const clamped = Math.min(val, 200);
+                          if (clamped > prev.max) {
+                            return { min: prev.max, max: clamped };
+                          }
+                          return { min: clamped, max: prev.max };
+                        })
+                      }
+                    />
+                    <RangeField
+                      label="Disappearing offset maximum"
+                      value={disappearRange.max}
+                      min={-200}
+                      max={200}
+                      step={5}
+                      onChange={(val) =>
+                        setDisappearRange((prev) => {
+                          const clamped = Math.max(val, -200);
+                          if (clamped < prev.min) {
+                            return { min: clamped, max: prev.min };
+                          }
+                          return { min: prev.min, max: clamped };
+                        })
+                      }
+                    />
+                    <div className="text-xs text-slate-400">
+                      Offset is measured from the screen center (positive = target disappears before center). A value will be drawn at random from this range each trial.
+                    </div>
                   </div>
+                ) : (
+                  <LabeledRange label={leadLabel} min={-60} max={200} step={5} value={flashLead} onChange={setFlashLead} />
                 )}
                 {mode === MODE_FLASH_LAG && (
                   <LabeledRange label={`Flash vertical offset: ${flashYOffset} px`} min={-100} max={100} step={5} value={flashYOffset} onChange={setFlashYOffset} />
@@ -690,6 +766,26 @@ function LabeledRange({ label, min, max, step, value, onChange }) {
   return (
     <label className="block">
       <div className="text-slate-300 mb-1 select-none">{label}</div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full"
+      />
+    </label>
+  );
+}
+
+function RangeField({ label, min, max, step, value, onChange }) {
+  return (
+    <label className="block">
+      <div className="flex items-center justify-between mb-1 text-slate-300 select-none">
+        <span>{label}</span>
+        <span className="text-slate-200 font-medium">{value} px</span>
+      </div>
       <input
         type="range"
         min={min}
