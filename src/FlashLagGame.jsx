@@ -3,6 +3,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 const MODE_FLASH_LAG = "flash-lag";
 const MODE_DISAPPEARING = "disappearing";
 const ASPECT_RATIO = 280 / 900;
+const PACMAN_IDLE_MOUTH = 0.28; // radians, per-side opening when static
+const PACMAN_MIN_MOUTH = 0.12;
+const PACMAN_MAX_MOUTH = 0.5;
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -54,9 +57,9 @@ export default function FlashLagGame() {
   const [flashLead, setFlashLead] = useState(80); // px ahead of moving dot AT FLASH MOMENT (centerX − lead is trigger X)
   const [flashYOffset, setFlashYOffset] = useState(0); // px vertical offset for flash dot (positive = lower)
   const [flashDuration, setFlashDuration] = useState(60); // ms (only for in-motion visibility)
-  const [dotRadius, setDotRadius] = useState(8);
+  const [dotRadius, setDotRadius] = useState(10);
   const [bg] = useState("#0b1020");
-  const [dotColor, setDotColor] = useState("#60a5fa");
+  const [dotColor, setDotColor] = useState("#fffb00ff");
   const [flashColor, setFlashColor] = useState("#f97316");
 
   // Data
@@ -153,6 +156,29 @@ export default function FlashLagGame() {
     }
   }, [stageSize.width, stageSize.height, flashYOffset, dotRadius, flashColor, clear, drawStage, mode]);
 
+  const getPacManMouth = (timeMs) => {
+    const oscillation = (Math.sin(timeMs * 0.05) + 1) / 2; // 0..1
+    return PACMAN_MIN_MOUTH + oscillation * (PACMAN_MAX_MOUTH - PACMAN_MIN_MOUTH);
+  };
+
+  const drawPacMan = (ctx, xCss, yCss, radiusCss, dpr, color, mouth = PACMAN_IDLE_MOUTH) => {
+    ctx.save();
+    ctx.translate(xCss * dpr, yCss * dpr);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, radiusCss * dpr, mouth, Math.PI * 2 - mouth, false);
+    ctx.closePath();
+    ctx.fill();
+
+    // Eye (fixed position so Pac-Man looks alive)
+    ctx.beginPath();
+    ctx.fillStyle = "#0f172a";
+    ctx.arc(radiusCss * dpr * 0.25, -radiusCss * dpr * 0.45, radiusCss * dpr * 0.18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  };
+
   const draw = (ts) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -213,7 +239,8 @@ export default function FlashLagGame() {
     drawStage(ctx, dpr);
     // Moving dot (hidden after disappearance)
     if (!(mode === MODE_DISAPPEARING && eventTriggeredRef.current)) {
-      drawDot(ctx, posRef.current, y, dotRadius, dpr, dotColor);
+      const mouthAngle = getPacManMouth(ts);
+      drawPacMan(ctx, posRef.current, y, dotRadius, dpr, dotColor, mouthAngle);
     }
     // Flash dot (centered horizontally) — only during motion for flashDuration
     if (mode === MODE_FLASH_LAG && eventTriggeredRef.current && ts <= flashHideAtRef.current) {
@@ -387,8 +414,8 @@ export default function FlashLagGame() {
     if (mode === MODE_FLASH_LAG) {
       drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
     }
-    // True moving-dot position at flash time
-    drawDot(ctx, truthX, y, dotRadius, dpr, dotColor);
+    // True moving-dot position at event time (Pac-Man)
+    drawPacMan(ctx, truthX, y, dotRadius, dpr, dotColor, PACMAN_IDLE_MOUTH);
 
     // Click marker
     ctx.save();
