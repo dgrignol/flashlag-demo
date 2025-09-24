@@ -605,14 +605,6 @@ export default function FlashLagGame() {
     return errorPoints.reduce((m, p) => Math.max(m, p.error), 1);
   }, [errorPoints]);
 
-  const errorRangeSummary = useMemo(() => {
-    if (!results.length) return null;
-    const avail = results.filter((r) => typeof r.lead_px === "number");
-    if (!avail.length) return null;
-    const avg = avail.reduce((sum, r) => sum + r.lead_px, 0) / avail.length;
-    return { avg: round2(avg) };
-  }, [results]);
-
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
       <div className="w-full max-w-screen-2xl px-4 md:px-8 xl:px-16 mx-auto">
@@ -806,13 +798,7 @@ export default function FlashLagGame() {
                 <span className="text-xs text-slate-400">{errorPoints.length} campioni</span>
               </div>
               {errorPoints.length ? (
-                <ErrorCloud
-                  points={errorPoints}
-                  maxError={maxErrorMagnitude}
-                  disappearRange={mode === MODE_DISAPPEARING ? disappearRangeRef.current : null}
-                  targetLabel={targetLabel}
-                  errorRangeSummary={errorRangeSummary}
-                />
+                <ErrorCloud points={errorPoints} maxError={maxErrorMagnitude} targetLabel={targetLabel} />
               ) : (
                 <div className="text-sm text-slate-400">Nessun dato disponibile. Esegui alcune prove per popolare la nuvola.</div>
               )}
@@ -868,7 +854,7 @@ function RangeField({ label, min, max, step, value, onChange }) {
   );
 }
 
-function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeSummary }) {
+function ErrorCloud({ points, maxError, targetLabel }) {
   const size = 260;
   const center = size / 2;
   const padding = 16;
@@ -917,26 +903,14 @@ function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeS
         </svg>
       </div>
       <div className="text-xs text-slate-300 space-y-1">
-        <div>
-          <span className="font-semibold text-slate-100">Punto di riferimento:</span> posizione di scomparsa del {targetLabel} (centro).
+        <div className="flex items-center gap-2">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: "rgba(248, 113, 113, 0.6)" }}
+            aria-hidden="true"
+          />
+          <span className="text-slate-100">Posizione di scomparsa del {targetLabel} (centro)</span>
         </div>
-        <div>
-          <span className="font-semibold text-slate-100">Scala:</span> raggio logaritmico — anello esterno ≈ {round2(maxError)} px (massimo osservato).
-        </div>
-        {disappearRange ? (
-          <div>
-            <span className="font-semibold text-slate-100">Intervallo campionato:</span> {disappearRange.min} – {disappearRange.max} px
-          </div>
-        ) : (
-          <div>
-            <span className="font-semibold text-slate-100">Prove con flash:</span> punti tracciati rispetto alla posizione del flash.
-          </div>
-        )}
-        {errorRangeSummary && (
-          <div>
-            <span className="font-semibold text-slate-100">Lead medio utilizzato:</span> {errorRangeSummary.avg} px
-          </div>
-        )}
       </div>
     </div>
   );
@@ -980,7 +954,7 @@ function ResultsTable({ results, currentParticipant }) {
             {rows.map((r, i) => (
               <tr key={i} className={i % 2 ? "bg-slate-900/40" : "bg-slate-900/20"}>
                 <td className="px-3 py-2 text-slate-300">{r.participant}</td>
-                <td className="px-3 py-2 text-slate-300">{r.abs_error_px}</td>
+                <td className="px-3 py-2 text-slate-300">{r.signed_error_px ?? r.abs_error_px}</td>
               </tr>
             ))}
           </tbody>
