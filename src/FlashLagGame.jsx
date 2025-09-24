@@ -1,4 +1,22 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+
+const MODE_FLASH_LAG = "flash-lag";
+const MODE_DISAPPEARING = "disappearing";
+const ASPECT_RATIO = 280 / 900;
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const round2 = (v) => Math.round(v * 100) / 100;
+
+function computeTargetX(w, lead) {
+  return w / 2 - lead;
+}
+
+function canStartTrialLogic(trialIndex, isRun, awaiting, name) {
+  if (isRun) return false;
+  if (!name.trim()) return false;
+  if (trialIndex >= 3) return false;
+  return trialIndex === 0 ? !awaiting : awaiting;
+}
 
 // Flash-Lag Illusion — Multi-Participant (centered flash, 3 trials each, leaderboard)
 // Responsive edition:
@@ -15,8 +33,8 @@ export default function FlashLagGame() {
   const runningRef = useRef(false);
   const posRef = useRef(0); // moving dot x (CSS px)
   const lastTsRef = useRef(0);
-  const flashedRef = useRef(false);
-  const trueXAtFlashRef = useRef(null); // moving-dot x when flash happens
+  const eventTriggeredRef = useRef(false); // true when flash/disappearance already occurred
+  const eventXRef = useRef(null); // moving-dot x when event happens
   const flashHideAtRef = useRef(0);
 
   // NEW: gate for the post-motion response window
@@ -29,6 +47,7 @@ export default function FlashLagGame() {
   const [awaitingNext, setAwaitingNext] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [responseLocked, setResponseLocked] = useState(false);
+  const [mode, setMode] = useState(MODE_FLASH_LAG);
 
   // Parameters
   const [speed, setSpeed] = useState(280); // px/s
@@ -36,7 +55,7 @@ export default function FlashLagGame() {
   const [flashYOffset, setFlashYOffset] = useState(0); // px vertical offset for flash dot (positive = lower)
   const [flashDuration, setFlashDuration] = useState(60); // ms (only for in-motion visibility)
   const [dotRadius, setDotRadius] = useState(8);
-  const [bg, setBg] = useState("#0b1020");
+  const [bg] = useState("#0b1020");
   const [dotColor, setDotColor] = useState("#60a5fa");
   const [flashColor, setFlashColor] = useState("#f97316");
 
@@ -46,13 +65,36 @@ export default function FlashLagGame() {
   const [summaries, setSummaries] = useState([]);      // leaderboard
 
   const [message, setMessage] = useState("Enter your name to begin.");
-  const [selfTestStatus, setSelfTestStatus] = useState("pending"); // kept, but NOT shown
+  const [, setSelfTestStatus] = useState("pending"); // kept, but NOT shown
 
   // Layout (responsive)
   const padding = 24;
   // Maintain the original aspect ratio (~900x280)
-  const ASPECT = 280 / 900;
   const [stageSize, setStageSize] = useState({ width: 900, height: 280 });
+
+  // Basic canvas helpers
+  const clear = useCallback(
+    (ctx) => {
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    },
+    [bg]
+  );
+
+  const drawStage = useCallback(
+    (ctx, dpr) => {
+      // Border only (guideline removed)
+      const { width, height } = stageSize;
+      const r = 16 * dpr;
+      ctx.save();
+      ctx.strokeStyle = "#1f2937";
+      ctx.lineWidth = 2 * dpr;
+      roundRect(ctx, 4 * dpr, 4 * dpr, (width - 8) * dpr, (height - 8) * dpr, r);
+      ctx.stroke();
+      ctx.restore();
+    },
+    [stageSize]
+  );
 
   // Observe wrapper width & update canvas size responsively
   useEffect(() => {
@@ -63,7 +105,7 @@ export default function FlashLagGame() {
       for (const entry of entries) {
         const wrapW = Math.max(320, entry.contentRect.width); // avoid too small
         const newWidth = Math.round(wrapW);
-        const newHeight = Math.round(newWidth * ASPECT);
+        const newHeight = Math.round(newWidth * ASPECT_RATIO);
 
         setStageSize((prev) => {
           // Scale any in-flight x positions so animation/feedback stays aligned
@@ -73,8 +115,8 @@ export default function FlashLagGame() {
             const scale = newPlayable / prevPlayable;
 
             posRef.current = padding + (posRef.current - padding) * scale;
-            if (trueXAtFlashRef.current != null) {
-              trueXAtFlashRef.current = padding + (trueXAtFlashRef.current - padding) * scale;
+            if (eventXRef.current != null) {
+              eventXRef.current = padding + (eventXRef.current - padding) * scale;
             }
           }
           return { width: newWidth, height: newHeight };
@@ -84,7 +126,7 @@ export default function FlashLagGame() {
 
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [canvasRef]);
 
   // Resize canvas for DPR crispness whenever stageSize changes
   useEffect(() => {
@@ -103,19 +145,13 @@ export default function FlashLagGame() {
       clear(ctx);
       drawStage(ctx, dpr);
       // If in response window, keep flash dot visible
-      if (responseWindowRef.current && flashedRef.current) {
+      if (responseWindowRef.current && eventTriggeredRef.current && mode === MODE_FLASH_LAG) {
         const y = Math.floor(stageSize.height / 2);
         const centerX = stageSize.width / 2;
         drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
       }
     }
-  }, [stageSize.width, stageSize.height, flashYOffset, dotRadius, flashColor, bg]);
-
-  // Basic canvas helpers
-  const clear = (ctx) => {
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  };
+  }, [stageSize.width, stageSize.height, flashYOffset, dotRadius, flashColor, clear, drawStage, mode]);
 
   const draw = (ts) => {
     const canvas = canvasRef.current;
@@ -124,8 +160,8 @@ export default function FlashLagGame() {
     const dpr = devicePixelRatioRef.current;
 
     if (!runningRef.current) {
-      // If we're in the response window, show the flash-position dot persistently
-      renderIdleOrResponseFrame(ctx, dpr, ts);
+      // If we're in the response window, render static frame (flash dot shown only for flash-lag)
+      renderIdleOrResponseFrame(ctx, dpr);
       return;
     }
 
@@ -142,61 +178,61 @@ export default function FlashLagGame() {
     const centerX = width / 2;
     const targetX = computeTargetX(width, flashLead); // centerX - flashLead
 
-    // Trigger the flash when we cross targetX
-    if (!flashedRef.current && posRef.current >= targetX) {
-      flashedRef.current = true;
-      trueXAtFlashRef.current = posRef.current; // truth at flash time
-      flashHideAtRef.current = ts + flashDuration; // visible briefly while in motion
+    // Trigger the event when we cross targetX
+    if (!eventTriggeredRef.current && posRef.current >= targetX) {
+      eventTriggeredRef.current = true;
+      eventXRef.current = posRef.current; // truth at event time
+      if (mode === MODE_FLASH_LAG) {
+        flashHideAtRef.current = ts + flashDuration; // visible briefly while in motion
+      } else {
+        posRef.current = eventXRef.current;
+        runningRef.current = false;
+        setIsRunning(false);
+        responseWindowRef.current = true;
+        setMessage(getResponsePrompt());
+        renderIdleOrResponseFrame(ctx, dpr);
+        return;
+      }
     }
 
-    // Stop the animation if we reached the right boundary
-    if (posRef.current >= xMax) {
+    // Stop the animation if we reached the right boundary (flash-lag mode only)
+    if (mode === MODE_FLASH_LAG && posRef.current >= xMax) {
       runningRef.current = false;
       setIsRunning(false);
 
       // Open response window: keep flash-position dot visible until user answers
       responseWindowRef.current = true;
-      setMessage("Click where the moving dot was when the flash occurred.");
+      setMessage(getResponsePrompt());
       // Draw one static frame for the response window
-      renderIdleOrResponseFrame(ctx, dpr, ts);
+      renderIdleOrResponseFrame(ctx, dpr);
       return;
     }
 
     // Render frame (during motion)
     clear(ctx);
     drawStage(ctx, dpr);
-    // Moving dot
-    drawDot(ctx, posRef.current, y, dotRadius, dpr, dotColor);
+    // Moving dot (hidden after disappearance)
+    if (!(mode === MODE_DISAPPEARING && eventTriggeredRef.current)) {
+      drawDot(ctx, posRef.current, y, dotRadius, dpr, dotColor);
+    }
     // Flash dot (centered horizontally) — only during motion for flashDuration
-    if (flashedRef.current && ts <= flashHideAtRef.current) {
+    if (mode === MODE_FLASH_LAG && eventTriggeredRef.current && ts <= flashHideAtRef.current) {
       drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
     }
 
     rafRef.current = requestAnimationFrame(draw);
   };
 
-  const renderIdleOrResponseFrame = (ctx, dpr, ts) => {
+  const renderIdleOrResponseFrame = (ctx, dpr) => {
     clear(ctx);
     drawStage(ctx, dpr);
 
-    // During response window (post-motion), show the flash dot persistently at its position
-    if (responseWindowRef.current && flashedRef.current) {
+    // During response window (flash-lag mode), show the flash dot persistently at its position
+    if (responseWindowRef.current && eventTriggeredRef.current && mode === MODE_FLASH_LAG) {
       const y = Math.floor(stageSize.height / 2);
       const centerX = stageSize.width / 2;
       drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
     }
-  };
-
-  const drawStage = (ctx, dpr) => {
-    // Border only (guideline removed)
-    const { width, height } = stageSize;
-    const r = 16 * dpr;
-    ctx.save();
-    ctx.strokeStyle = "#1f2937";
-    ctx.lineWidth = 2 * dpr;
-    roundRect(ctx, 4 * dpr, 4 * dpr, (width - 8) * dpr, (height - 8) * dpr, r);
-    ctx.stroke();
-    ctx.restore();
   };
 
   const drawDot = (ctx, xCss, yCss, radiusCss, dpr, color) => {
@@ -219,6 +255,16 @@ export default function FlashLagGame() {
     ctx.closePath();
   }
 
+  const getResponsePrompt = () =>
+    mode === MODE_DISAPPEARING
+      ? "Click where the moving dot disappeared."
+      : "Click where the moving dot was when the flash occurred.";
+
+  const getStartPrompt = () =>
+    mode === MODE_DISAPPEARING
+      ? "Watch the moving dot. Respond after it disappears."
+      : "Watch for the flash (center). Respond after the dot disappears.";
+
   // Start a trial
   const startTrial = () => {
     if (!participant.trim()) {
@@ -232,8 +278,8 @@ export default function FlashLagGame() {
 
     posRef.current = padding; // reset to left
     lastTsRef.current = 0;
-    flashedRef.current = false;
-    trueXAtFlashRef.current = null;
+    eventTriggeredRef.current = false;
+    eventXRef.current = null;
     flashHideAtRef.current = 0;
     responseWindowRef.current = false;
 
@@ -243,7 +289,7 @@ export default function FlashLagGame() {
     runningRef.current = true;
     setIsRunning(true);
     setAwaitingNext(false);
-    setMessage("Watch for the flash (center). Respond after the dot disappears.");
+    setMessage(getStartPrompt());
     rafRef.current = requestAnimationFrame(draw);
   };
 
@@ -256,14 +302,14 @@ export default function FlashLagGame() {
     setSummary(null);
     setTrialIdx(0);
     setAwaitingNext(false);
-    setMessage("Ready for Trial 1. Click Start trial when ready.");
+    setMessage(`Ready for Trial 1. ${getStartPrompt()}`);
   };
 
   // Handle response — only after motion finished AND flash happened
   const onCanvasClick = (e) => {
     if (responseLocked) return;
     if (!responseWindowRef.current) return;                 // accept only after dot has disappeared
-    if (!flashedRef.current || trueXAtFlashRef.current == null) return;
+    if (!eventTriggeredRef.current || eventXRef.current == null) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left; // CSS px
@@ -277,13 +323,14 @@ export default function FlashLagGame() {
 
     // Ground truth = moving dot x at flash time (constrained)
     const { width } = stageSize;
-    const truth = clamp(trueXAtFlashRef.current, padding, width - padding);
+    const truth = clamp(eventXRef.current, padding, width - padding);
     const signedError = clickX - truth;
     const absError = Math.abs(signedError);
 
     const trial = {
       participant: participant.trim(),
       trial: trialIdx + 1,
+      mode,
       abs_error_px: round2(absError),
       // keep internal bookkeeping (not shown in Results)
       speed_px_s: speed,
@@ -336,8 +383,10 @@ export default function FlashLagGame() {
     const y = Math.floor(stageSize.height / 2);
     const centerX = stageSize.width / 2;
 
-    // Flash position dot (persist)
-    drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
+    // Flash position dot (persist) only for flash-lag mode
+    if (mode === MODE_FLASH_LAG) {
+      drawDot(ctx, centerX, y + flashYOffset, dotRadius + 2, dpr, flashColor);
+    }
     // True moving-dot position at flash time
     drawDot(ctx, truthX, y, dotRadius, dpr, dotColor);
 
@@ -389,8 +438,8 @@ export default function FlashLagGame() {
     setAwaitingNext(false);
     setParticipant("");
     responseWindowRef.current = false;
-    flashedRef.current = false;
-    trueXAtFlashRef.current = null;
+    eventTriggeredRef.current = false;
+    eventXRef.current = null;
     setMessage("Enter your name to begin.");
     const canvas = canvasRef.current;
     if (canvas) {
@@ -399,21 +448,6 @@ export default function FlashLagGame() {
       drawStage(ctx, devicePixelRatioRef.current);
     }
   };
-
-  // Utilities
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const round2 = (v) => Math.round(v * 100) / 100;
-
-  // Pure helpers
-  function computeTargetX(w, lead) {
-    return w / 2 - lead;
-  }
-  function canStartTrialLogic(trialIndex, isRun, awaiting, name) {
-    if (isRun) return false;
-    if (!name.trim()) return false;
-    if (trialIndex >= 3) return false;
-    return trialIndex === 0 ? !awaiting : awaiting;
-  }
 
   // Export CSV (full log + leaderboard)
   const exportCSV = () => {
@@ -447,6 +481,22 @@ export default function FlashLagGame() {
     URL.revokeObjectURL(url);
   };
 
+  // --------------------------
+  // Lightweight self-tests (silent)
+  // --------------------------
+  const runSelfTests = useCallback(() => {
+    try {
+      console.assert(clamp(5, 0, 10) === 5, "clamp in-range");
+      console.assert(round2(1.2345) === 1.23, "round2 works");
+      console.assert(computeTargetX(900, 80) === 370, "targetX 900, lead 80 => 450-80");
+      console.assert(canStartTrialLogic(0, false, false, "A") === true, "trial0 start enabled");
+      console.assert(canvasRef.current instanceof HTMLCanvasElement, "canvas exists");
+      return true;
+    } catch {
+      return false;
+    }
+  }, [canvasRef]);
+
   // One-time initial paint + silent self-tests
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -459,20 +509,22 @@ export default function FlashLagGame() {
     setSelfTestStatus(passed ? "passed" : "failed"); // not shown in UI
 
     return () => cancelAnimationFrame(rafRef.current);
-  }, []);
+  }, [clear, drawStage, runSelfTests]);
 
   const trialsRemaining = Math.max(0, 3 - trialIdx);
   const canStartTrial = canStartTrialLogic(trialIdx, isRunning, awaitingNext, participant);
   const canStartNewParticipant = !isRunning && trialIdx >= 3;
+  const leadLabel = mode === MODE_DISAPPEARING ? `Disappearing offset: ${flashLead} px` : `Flash lead: ${flashLead} px`;
+  const introCopy =
+    mode === MODE_FLASH_LAG
+      ? "Flash-lag mode: A dot moves left to right while a second dot briefly flashes at the center. After it finishes moving, click where you believe the moving dot was at the flash."
+      : "Disappearing mode: A single dot moves left to right and vanishes at the chosen offset. Click where you believe the moving dot disappeared.";
 
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
       <div className="w-full px-4 max-w-none">
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">Flash-Lag Illusion</h1>
-        <p className="text-slate-300 mb-4">
-          A dot moves left to right. A second dot briefly flashes at the <strong>screen center</strong>.
-          Respond after the moving dot disappears: click where you believe the moving dot was at the flash.
-        </p>
+        <p className="text-slate-300 mb-4">{introCopy}</p>
 
         <div
   className={`grid gap-4 mb-4 ${showSettings ? "lg:grid-cols-3" : "lg:grid-cols-1"}`}
@@ -513,12 +565,13 @@ export default function FlashLagGame() {
                   Settings
                 </button>
               </div>
-              <div className="text-sm text-slate-300">
+              <div className="text-sm text-slate-300 text-right">
                 {summary && trialIdx >= 3 ? (
                   <span>Last avg abs error: <span className="font-semibold">{summary.average_abs_error_px} px</span></span>
                 ) : (
                   <span>Trials done: <span className="font-semibold">{trialIdx}</span> • Remaining: <span className="font-semibold">{trialsRemaining}</span></span>
                 )}
+                <div className="text-xs text-slate-400 mt-1 uppercase tracking-wide">Mode: {mode === MODE_FLASH_LAG ? "Flash-lag" : "Disappearing"}</div>
               </div>
             </div>
 
@@ -550,14 +603,44 @@ export default function FlashLagGame() {
             <div className="bg-slate-800/60 rounded-2xl p-4 shadow">
               <h2 className="text-lg font-semibold mb-3">Controls</h2>
               <div className="space-y-3 text-sm">
+                <div>
+                  <div className="text-slate-300 mb-2 select-none">Mode</div>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setMode(MODE_FLASH_LAG)}
+                      className={`px-3 py-2 rounded-lg border ${mode === MODE_FLASH_LAG ? "bg-emerald-500/20 border-emerald-400" : "bg-slate-900/40 border-slate-700 hover:border-slate-500"}`}
+                    >
+                      Flash-lag (flash)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMode(MODE_DISAPPEARING)}
+                      className={`px-3 py-2 rounded-lg border ${mode === MODE_DISAPPEARING ? "bg-emerald-500/20 border-emerald-400" : "bg-slate-900/40 border-slate-700 hover:border-slate-500"}`}
+                    >
+                      Disappearing
+                    </button>
+                  </div>
+                </div>
                 <LabeledRange label={`Speed: ${speed} px/s`} min={80} max={600} step={10} value={speed} onChange={setSpeed} />
-                <LabeledRange label={`Flash lead: ${flashLead} px`} min={-60} max={200} step={5} value={flashLead} onChange={setFlashLead} />
-                <LabeledRange label={`Flash vertical offset: ${flashYOffset} px`} min={-100} max={100} step={5} value={flashYOffset} onChange={setFlashYOffset} />
-                <LabeledRange label={`Flash duration: ${flashDuration} ms`} min={20} max={200} step={5} value={flashDuration} onChange={setFlashDuration} />
+                <LabeledRange label={leadLabel} min={-60} max={200} step={5} value={flashLead} onChange={setFlashLead} />
+                {mode === MODE_DISAPPEARING && (
+                  <div className="text-xs text-slate-400">
+                    Offset is measured from the screen center (positive = dot disappears before center).
+                  </div>
+                )}
+                {mode === MODE_FLASH_LAG && (
+                  <LabeledRange label={`Flash vertical offset: ${flashYOffset} px`} min={-100} max={100} step={5} value={flashYOffset} onChange={setFlashYOffset} />
+                )}
+                {mode === MODE_FLASH_LAG && (
+                  <LabeledRange label={`Flash duration: ${flashDuration} ms`} min={20} max={200} step={5} value={flashDuration} onChange={setFlashDuration} />
+                )}
                 <LabeledRange label={`Dot radius: ${dotRadius} px`} min={4} max={16} step={1} value={dotRadius} onChange={setDotRadius} />
                 <div className="grid grid-cols-2 gap-2 pt-2">
                   <ColorSwatch label="Dot" value={dotColor} onChange={setDotColor} />
-                  <ColorSwatch label="Flash" value={flashColor} onChange={setFlashColor} />
+                  {mode === MODE_FLASH_LAG && (
+                    <ColorSwatch label="Flash" value={flashColor} onChange={setFlashColor} />
+                  )}
                 </div>
 
                 {/* Moved here: Reset all */}
@@ -577,22 +660,6 @@ export default function FlashLagGame() {
       </div>
     </div>
   );
-
-  // --------------------------
-  // Lightweight self-tests (silent)
-  // --------------------------
-  function runSelfTests() {
-    try {
-      console.assert(clamp(5, 0, 10) === 5, "clamp in-range");
-      console.assert(round2(1.2345) === 1.23, "round2 works");
-      console.assert(computeTargetX(900, 80) === 370, "targetX 900, lead 80 => 450-80");
-      console.assert(canStartTrialLogic(0, false, false, "A") === true, "trial0 start enabled");
-      console.assert(canvasRef.current instanceof HTMLCanvasElement, "canvas exists");
-      return true;
-    } catch {
-      return false;
-    }
-  }
 }
 
 // --------------------------
