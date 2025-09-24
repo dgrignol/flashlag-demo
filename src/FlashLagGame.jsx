@@ -549,7 +549,7 @@ export default function FlashLagGame() {
 
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
-      <div className="w-full px-4 max-w-none">
+      <div className="w-full max-w-6xl px-4 md:px-8 mx-auto">
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">Flash-Lag Illusion</h1>
         <p className="text-slate-300 mb-4">{introCopy}</p>
 
@@ -603,7 +603,7 @@ export default function FlashLagGame() {
             </div>
 
             {/* Responsive wrapper measured by ResizeObserver */}
-            <div ref={stageWrapRef} className="rounded-2xl overflow-hidden border border-slate-700 w-full">
+            <div ref={stageWrapRef} className="rounded-2xl overflow-hidden border border-slate-700 w-full mx-auto">
               <canvas
                 ref={canvasRef}
                 onClick={onCanvasClick}
