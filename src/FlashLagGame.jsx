@@ -477,37 +477,6 @@ export default function FlashLagGame() {
   };
 
   // Export CSV (full log + leaderboard)
-  const exportCSV = () => {
-    if (results.length === 0) return;
-
-    const header = Object.keys(results[0]);
-    const rows = results.map((r) => header.map((k) => r[k]));
-
-    const csvParts = [];
-    csvParts.push("TRIALS");
-    csvParts.push(header.join(","));
-    csvParts.push(...rows.map((r) => r.join(",")));
-
-    if (summaries.length) {
-      csvParts.push("");
-      csvParts.push("LEADERBOARD");
-      csvParts.push("participant,average_abs_error_px");
-      const sorted = [...summaries].sort((a, b) => a.average_abs_error_px - b.average_abs_error_px);
-      sorted.forEach((s) => csvParts.push(`${s.participant},${s.average_abs_error_px}`));
-    }
-
-    const csv = csvParts.join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `flashlag_all_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   // --------------------------
   // Lightweight self-tests (silent)
   // --------------------------
@@ -612,15 +581,7 @@ export default function FlashLagGame() {
               />
             </div>
 
-            <div className="pt-3 flex items-center gap-3">
-              <button
-                onClick={exportCSV}
-                disabled={results.length === 0}
-                className={`px-3 py-2 rounded-lg text-sm shadow ${results.length ? "bg-indigo-500 hover:bg-indigo-600" : "bg-slate-700 text-slate-400 cursor-not-allowed"}`}
-              >
-                Export CSV (all)
-              </button>
-              {/* self-test status intentionally hidden */}
+            <div className="pt-3 flex items-center">
               <div className="text-xs text-slate-400">{message}</div>
             </div>
           </div>

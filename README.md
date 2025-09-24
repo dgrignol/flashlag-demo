@@ -1,13 +1,34 @@
-# React + Vite
+# Flash-Lag Demo
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Interactive web experiment that replicates the flash-lag illusion and a disappearing-dot variant. Participants watch a dot move left to right, then click where they believe the target was when a flash appeared (flash-lag mode) or where it vanished (disappearing mode). Results are stored until reset or reload and a leaderboard reveals the most accurate guessers.
 
-Currently, two official plugins are available:
+**Live demo:** https://dgrignol.github.io/flashlag-demo/
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Features
 
-## Expanding the ESLint configuration
+- Two modes: classic flash-lag (flash at screen centre) and disappearing-dot (no flash, dot vanishes at selected offset).
+- Adjustable parameters: motion speed, flash/disappearance offset, flash duration, offsets, dot radius, colours.
+- Automatic scaling: canvas resizes to the viewport, keeping trials aligned.
+- Immediate feedback: error visualization plus per-participant stats and a leaderboard.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
-# Trigger redeploy
+## Running locally
+
+```bash
+npm install
+npm run dev
+```
+
+The dev server starts at http://localhost:5173 (default). Changes hot-reload in the browser.
+
+## Usage flow
+
+1. Enter participant name.
+2. Choose the desired mode and (optionally) tweak settings.
+3. Start each trial, watch the moving dot, then click the location you perceived.
+4. After three trials, review the average error or export the data.
+
+## Technology
+
+- Vite + React (canvas rendering for the stage)
+- Tailwind CSS styles
+- No backend—data persists in memory while the page is open.
