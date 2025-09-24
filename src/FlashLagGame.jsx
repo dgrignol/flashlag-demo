@@ -93,7 +93,7 @@ export default function FlashLagGame() {
   const [summary, setSummary] = useState(null);        // current participant summary
   const [summaries, setSummaries] = useState([]);      // leaderboard
 
-  const [message, setMessage] = useState("Enter your name to begin.");
+  const [message, setMessage] = useState("Inserisci il tuo nome per iniziare.");
   const [, setSelfTestStatus] = useState("pending"); // kept, but NOT shown
 
   // Layout (responsive)
@@ -314,18 +314,18 @@ export default function FlashLagGame() {
 
   const getResponsePrompt = () =>
     mode === MODE_DISAPPEARING
-      ? "Click where the moving target disappeared."
-      : "Click where the moving target was when the flash occurred.";
+      ? "Fai clic dove il bersaglio è scomparso."
+      : "Fai clic dove si trovava il bersaglio in movimento quando è apparso il flash.";
 
   const getStartPrompt = () =>
     mode === MODE_DISAPPEARING
-      ? "Watch the moving target. Respond after it disappears."
-      : "Watch for the flash (center). Respond after the target disappears.";
+      ? "Osserva il bersaglio in movimento. Rispondi dopo che è scomparso."
+      : "Osserva il bersaglio in movimento. Rispondi dopo che il bersaglio è scomparso.";
 
   // Start a trial
   const startTrial = () => {
     if (!participant.trim()) {
-      setMessage("Please enter the participant name first.");
+      setMessage("Inserisci prima il nome del partecipante.");
       return;
     }
 
@@ -360,13 +360,13 @@ export default function FlashLagGame() {
   // Start a fresh participant without clearing prior results/summaries
   const startNewParticipant = () => {
     if (!participant.trim()) {
-      setMessage("Please enter a new participant name.");
+      setMessage("Inserisci un nuovo nome partecipante.");
       return;
     }
     setSummary(null);
     setTrialIdx(0);
     setAwaitingNext(false);
-    setMessage(`Ready for Trial 1. ${getStartPrompt()}`);
+    setMessage(`Pronto per la prova 1. ${getStartPrompt()}`);
   };
 
   // Handle response — only after motion finished AND flash happened
@@ -434,10 +434,10 @@ export default function FlashLagGame() {
         const withoutDup = prev.filter((s) => s.participant !== newSummary.participant);
         return [...withoutDup, newSummary];
       });
-      setMessage(`All trials done for ${participant.trim()}. Average absolute error = ${round2(avg)} px. Enter another name to continue.`);
+      setMessage(`Tutte le prove completate per ${participant.trim()}. Errore medio = ${round2(avg)} px. Inserisci un altro nome per continuare.`);
       setAwaitingNext(false);
     } else {
-      setMessage('Response recorded. Click "Next trial" when ready.');
+      setMessage('Risposta registrata. Clicca su "Prossima prova" quando sei pronto.');
       setAwaitingNext(true);
     }
   };
@@ -513,7 +513,7 @@ export default function FlashLagGame() {
     responseWindowRef.current = false;
     eventTriggeredRef.current = false;
     eventXRef.current = null;
-    setMessage("Enter your name to begin.");
+    setMessage("Inserisci il tuo nome per iniziare.");
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext("2d");
@@ -573,14 +573,14 @@ export default function FlashLagGame() {
   const canStartNewParticipant = !isRunning && trialIdx >= 3;
   const leadLabel =
     mode === MODE_DISAPPEARING
-      ? `Disappearing offset range: ${disappearRange.min} to ${disappearRange.max} px`
-      : `Flash lead: ${flashLead} px`;
-  const targetLabel = targetShape === TARGET_PACMAN ? "Pac-Man target" : "dot";
-  const targetSubject = targetShape === TARGET_PACMAN ? "Pac-Man" : "dot";
+      ? `Intervallo di scomparsa: ${disappearRange.min} – ${disappearRange.max} px`
+      : `Lead del flash: ${flashLead} px`;
+  const targetLabel = targetShape === TARGET_PACMAN ? "Pac-Man" : "punto";
+  const targetSubject = targetShape === TARGET_PACMAN ? "Pac-Man" : "il punto";
   const introCopy =
     mode === MODE_FLASH_LAG
-      ? `Flash-lag mode: The ${targetLabel} moves left to right while a second dot briefly flashes at the center. After it finishes moving, click where you believe the ${targetSubject} was at the flash.`
-      : `Disappearing mode: The ${targetLabel} moves left to right and vanishes at a random offset within the selected range. Click where you believe the ${targetSubject} disappeared.`;
+      ? `Modalità flash-lag: ${targetLabel} si muove da sinistra a destra mentre un secondo punto lampeggia brevemente al centro. Quando termina il movimento, fai clic dove pensi che ${targetSubject} fosse al momento del flash.`
+      : `Modalità scomparsa: ${targetLabel} si muove da sinistra a destra e ad un certo punto scompare. Fai clic sul punto dove pensi che ${targetSubject} sia scomparso.`;
   const errorPoints = useMemo(() => {
     if (!results.length) return [];
     return results
@@ -616,7 +616,7 @@ export default function FlashLagGame() {
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
       <div className="w-full max-w-screen-2xl px-4 md:px-8 xl:px-16 mx-auto">
-        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">Flash-Lag Illusion</h1>
+        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">Il tuo cervello ti inganna?</h1>
         <p className="text-slate-300 mb-4">{introCopy}</p>
 
         <div
@@ -630,7 +630,7 @@ export default function FlashLagGame() {
               <div className="flex items-center gap-2 flex-wrap">
                 <input
                   type="text"
-                  placeholder="Participant name"
+                  placeholder="Nome partecipante"
                   value={participant}
                   onChange={(e) => setParticipant(e.target.value)}
                   className="px-3 py-2 rounded-xl bg-slate-900/60 border border-slate-700 focus:outline-none"
@@ -640,14 +640,14 @@ export default function FlashLagGame() {
                   disabled={!canStartTrial}
                   className={`px-4 py-2 rounded-xl shadow ${canStartTrial ? "bg-emerald-500 hover:bg-emerald-600" : "bg-slate-700 text-slate-400 cursor-not-allowed"}`}
                 >
-                  {trialIdx === 0 ? "Start trial" : trialIdx < 3 ? "Next trial" : "Finished"}
+                  {trialIdx === 0 ? "Avvia prova" : trialIdx < 3 ? "Prossima prova" : "Concluso"}
                 </button>
                 <button
                   onClick={startNewParticipant}
                   disabled={!canStartNewParticipant}
                   className={`px-4 py-2 rounded-xl shadow ${canStartNewParticipant ? "bg-sky-500 hover:bg-sky-600" : "bg-slate-700 text-slate-400 cursor-not-allowed"}`}
                 >
-                  Start new participant
+                  Nuovo partecipante
                 </button>
 
                 {/* Settings toggle (now also contains Reset) */}
@@ -655,16 +655,16 @@ export default function FlashLagGame() {
                   onClick={() => setShowSettings((s) => !s)}
                   className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 shadow"
                 >
-                  Settings
+                  Impostazioni
                 </button>
               </div>
               <div className="text-sm text-slate-300 text-right">
                 {summary && trialIdx >= 3 ? (
-                  <span>Last avg abs error: <span className="font-semibold">{summary.average_abs_error_px} px</span></span>
+                  <span>Ultimo errore: <span className="font-semibold">{summary.average_abs_error_px} px</span></span>
                 ) : (
-                  <span>Trials done: <span className="font-semibold">{trialIdx}</span> • Remaining: <span className="font-semibold">{trialsRemaining}</span></span>
+                  <span>Prove svolte: <span className="font-semibold">{trialIdx}</span> • Restanti: <span className="font-semibold">{trialsRemaining}</span></span>
                 )}
-                <div className="text-xs text-slate-400 mt-1 uppercase tracking-wide">Mode: {mode === MODE_FLASH_LAG ? "Flash-lag" : "Disappearing"}</div>
+                <div className="text-xs text-slate-400 mt-1 uppercase tracking-wide">Modalità: {mode === MODE_FLASH_LAG ? "Flash-lag" : "Scomparsa"}</div>
               </div>
             </div>
 
@@ -674,7 +674,7 @@ export default function FlashLagGame() {
                 ref={canvasRef}
                 onClick={onCanvasClick}
                 className={`block select-none ${responseLocked ? "cursor-not-allowed" : "cursor-crosshair"}`}
-                aria-label="Flash-lag illusion canvas"
+                aria-label="Canvas dell'illusione flash-lag"
               />
             </div>
 
@@ -685,7 +685,7 @@ export default function FlashLagGame() {
                 onClick={() => setShowErrorCloud((v) => !v)}
                 className="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200"
               >
-                {showErrorCloud ? "Hide" : "Show"} error cloud
+                {showErrorCloud ? "Nascondi" : "Mostra"} nuvola errori
               </button>
             </div>
           </div>
@@ -693,10 +693,10 @@ export default function FlashLagGame() {
           {/* Controls (wrapped in Settings toggle) */}
           {showSettings && (
             <div className="bg-slate-800/60 rounded-2xl p-4 shadow">
-              <h2 className="text-lg font-semibold mb-3">Controls</h2>
+              <h2 className="text-lg font-semibold mb-3">Controlli</h2>
               <div className="space-y-3 text-sm">
                 <div>
-                  <div className="text-slate-300 mb-2 select-none">Mode</div>
+                  <div className="text-slate-300 mb-2 select-none">Modalità</div>
                   <div className="flex gap-2 flex-wrap">
                     <button
                       type="button"
@@ -710,12 +710,12 @@ export default function FlashLagGame() {
                       onClick={() => setMode(MODE_DISAPPEARING)}
                       className={`px-3 py-2 rounded-lg border ${mode === MODE_DISAPPEARING ? "bg-emerald-500/20 border-emerald-400" : "bg-slate-900/40 border-slate-700 hover:border-slate-500"}`}
                     >
-                      Disappearing
+                      Scomparsa
                     </button>
                   </div>
                 </div>
                 <div>
-                  <div className="text-slate-300 mb-2 select-none">Target</div>
+                  <div className="text-slate-300 mb-2 select-none">Bersaglio</div>
                   <div className="flex gap-2 flex-wrap">
                     <button
                       type="button"
@@ -729,15 +729,15 @@ export default function FlashLagGame() {
                       onClick={() => setTargetShape(TARGET_DOT)}
                       className={`px-3 py-2 rounded-lg border ${targetShape === TARGET_DOT ? "bg-emerald-500/20 border-emerald-400" : "bg-slate-900/40 border-slate-700 hover:border-slate-500"}`}
                     >
-                      Dot
+                      Punto
                     </button>
                   </div>
                 </div>
-                <LabeledRange label={`Speed: ${speed} px/s`} min={80} max={600} step={10} value={speed} onChange={setSpeed} />
+                <LabeledRange label={`Velocità: ${speed} px/s`} min={80} max={600} step={10} value={speed} onChange={setSpeed} />
                 {mode === MODE_DISAPPEARING ? (
                   <div className="space-y-2">
                     <RangeField
-                      label="Disappearing offset minimum"
+                      label="Offset minimo di scomparsa"
                       value={disappearRange.min}
                       min={-200}
                       max={200}
@@ -753,7 +753,7 @@ export default function FlashLagGame() {
                       }
                     />
                     <RangeField
-                      label="Disappearing offset maximum"
+                      label="Offset massimo di scomparsa"
                       value={disappearRange.max}
                       min={-200}
                       max={200}
@@ -769,21 +769,21 @@ export default function FlashLagGame() {
                       }
                     />
                     <div className="text-xs text-slate-400">
-                      Offset is measured from the screen center (positive = target disappears before center). A value will be drawn at random from this range each trial.
+                      L'offset è misurato dal centro dello schermo (positivo = il bersaglio scompare prima del centro). A ogni prova viene estratto un valore casuale da questo intervallo.
                     </div>
                   </div>
                 ) : (
                   <LabeledRange label={leadLabel} min={-60} max={200} step={5} value={flashLead} onChange={setFlashLead} />
                 )}
                 {mode === MODE_FLASH_LAG && (
-                  <LabeledRange label={`Flash vertical offset: ${flashYOffset} px`} min={-100} max={100} step={5} value={flashYOffset} onChange={setFlashYOffset} />
+                  <LabeledRange label={`Offset verticale del flash: ${flashYOffset} px`} min={-100} max={100} step={5} value={flashYOffset} onChange={setFlashYOffset} />
                 )}
                 {mode === MODE_FLASH_LAG && (
-                  <LabeledRange label={`Flash duration: ${flashDuration} ms`} min={20} max={200} step={5} value={flashDuration} onChange={setFlashDuration} />
+                  <LabeledRange label={`Durata del flash: ${flashDuration} ms`} min={20} max={200} step={5} value={flashDuration} onChange={setFlashDuration} />
                 )}
-                <LabeledRange label={`Dot radius: ${dotRadius} px`} min={4} max={16} step={1} value={dotRadius} onChange={setDotRadius} />
+                <LabeledRange label={`Raggio del bersaglio: ${dotRadius} px`} min={4} max={16} step={1} value={dotRadius} onChange={setDotRadius} />
                 <div className="grid grid-cols-2 gap-2 pt-2">
-                  <ColorSwatch label="Dot" value={dotColor} onChange={setDotColor} />
+                  <ColorSwatch label="Bersaglio" value={dotColor} onChange={setDotColor} />
                   {mode === MODE_FLASH_LAG && (
                     <ColorSwatch label="Flash" value={flashColor} onChange={setFlashColor} />
                   )}
@@ -792,7 +792,7 @@ export default function FlashLagGame() {
                 {/* Moved here: Reset all */}
                 <div className="pt-4 border-t border-slate-700 mt-4">
                   <button onClick={reset} className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 shadow w-full">
-                    Reset all
+                    Reimposta tutto
                   </button>
                 </div>
               </div>
@@ -802,8 +802,8 @@ export default function FlashLagGame() {
           {showErrorCloud && (
             <div className="bg-slate-800/60 rounded-2xl p-4 shadow flex flex-col">
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold">Error cloud</h2>
-                <span className="text-xs text-slate-400">{errorPoints.length} samples</span>
+                <h2 className="text-lg font-semibold">Nuvola degli errori</h2>
+                <span className="text-xs text-slate-400">{errorPoints.length} campioni</span>
               </div>
               {errorPoints.length ? (
                 <ErrorCloud
@@ -814,7 +814,7 @@ export default function FlashLagGame() {
                   errorRangeSummary={errorRangeSummary}
                 />
               ) : (
-                <div className="text-sm text-slate-400">No data yet. Run a few trials to populate the cloud.</div>
+                <div className="text-sm text-slate-400">Nessun dato disponibile. Esegui alcune prove per popolare la nuvola.</div>
               )}
             </div>
           )}
@@ -908,7 +908,7 @@ function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeS
                 fill="rgba(96, 165, 250, 0.8)"
               >
                 <title>
-                  {`${point.participant} • Trial ${point.trialNumber}\nError: ${point.error.toFixed(1)} px`}
+                  {`${point.participant} • Prova ${point.trialNumber}\nErrore: ${point.error.toFixed(1)} px`}
                 </title>
               </circle>
             );
@@ -918,23 +918,23 @@ function ErrorCloud({ points, maxError, disappearRange, targetLabel, errorRangeS
       </div>
       <div className="text-xs text-slate-300 space-y-1">
         <div>
-          <span className="font-semibold text-slate-100">Reference dot:</span> {targetLabel} disappearance location (center).
+          <span className="font-semibold text-slate-100">Punto di riferimento:</span> posizione di scomparsa del {targetLabel} (centro).
         </div>
         <div>
-          <span className="font-semibold text-slate-100">Scale:</span> log radius — outer ring ≈ {round2(maxError)} px (max observed).
+          <span className="font-semibold text-slate-100">Scala:</span> raggio logaritmico — anello esterno ≈ {round2(maxError)} px (massimo osservato).
         </div>
         {disappearRange ? (
           <div>
-            <span className="font-semibold text-slate-100">Range sampled:</span> {disappearRange.min} to {disappearRange.max} px
+            <span className="font-semibold text-slate-100">Intervallo campionato:</span> {disappearRange.min} – {disappearRange.max} px
           </div>
         ) : (
           <div>
-            <span className="font-semibold text-slate-100">Flash trials:</span> plotted relative to flash-aligned truth.
+            <span className="font-semibold text-slate-100">Prove con flash:</span> punti tracciati rispetto alla posizione del flash.
           </div>
         )}
         {errorRangeSummary && (
           <div>
-            <span className="font-semibold text-slate-100">Average lead used:</span> {errorRangeSummary.avg} px
+            <span className="font-semibold text-slate-100">Lead medio utilizzato:</span> {errorRangeSummary.avg} px
           </div>
         )}
       </div>
@@ -960,20 +960,20 @@ function ColorSwatch({ label, value, onChange }) {
 function ResultsTable({ results, currentParticipant }) {
   const rows = results.filter((r) => r.participant === currentParticipant);
   if (!currentParticipant) {
-    return <div className="mt-2 text-sm text-slate-400">No participant selected.</div>;
+    return <div className="mt-2 text-sm text-slate-400">Nessun partecipante selezionato.</div>;
   }
   if (!rows.length) {
-    return <div className="mt-2 text-sm text-slate-400">No trials yet for this Participant.</div>;
+    return <div className="mt-2 text-sm text-slate-400">Ancora nessuna prova per questo partecipante.</div>;
   }
   return (
     <div className="mt-4">
-      <h3 className="text-lg font-semibold mb-2">Results</h3>
+      <h3 className="text-lg font-semibold mb-2">Risultati</h3>
       <div className="overflow-x-auto rounded-xl border border-slate-700">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-800/80">
             <tr>
-              <th className="px-3 py-2 text-left font-medium text-slate-200">Participant</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-200">Abs error (px)</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-200">Partecipante</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-200">Errore (px)</th>
             </tr>
           </thead>
           <tbody>
@@ -996,14 +996,14 @@ function Leaderboard({ summaries }) {
   const sorted = [...summaries].sort((a, b) => a.average_abs_error_px - b.average_abs_error_px);
   return (
     <div className="mt-6">
-      <h3 className="text-lg font-semibold mb-2">Leaderboard</h3>
+      <h3 className="text-lg font-semibold mb-2">Classifica</h3>
       <div className="overflow-x-auto rounded-xl border border-slate-700">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-800/80">
             <tr>
-              <th className="px-3 py-2 text-left font-medium text-slate-200">Rank</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-200">Participant</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-200">Average abs error (px)</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-200">Posizione</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-200">Partecipante</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-200">Errore medio (px)</th>
             </tr>
           </thead>
           <tbody>
