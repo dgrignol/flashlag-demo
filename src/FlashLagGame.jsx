@@ -676,7 +676,7 @@ export default function FlashLagGame() {
               <canvas
                 ref={canvasRef}
                 onClick={onCanvasClick}
-                className={`block select-none ${responseLocked ? "cursor-not-allowed" : "cursor-crosshair"}`}
+                className={`block select-none ${isRunning ? "cursor-none" : responseLocked ? "cursor-not-allowed" : "cursor-crosshair"}`}
                 aria-label="Canvas dell'illusione flash-lag"
               />
             </div>
