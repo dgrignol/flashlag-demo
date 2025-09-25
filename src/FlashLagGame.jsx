@@ -909,6 +909,7 @@ function ErrorCloud({ points, maxError, targetLabel }) {
             const fillColor = point.isCurrent ? HIGHLIGHT_COLOR : isPositive ? POSITIVE_COLOR : NEGATIVE_COLOR;
             const radius = point.isCurrent ? 5.5 : 4;
 
+
             return (
               <circle
                 key={`${point.participant}-${point.trialNumber}-${idx}`}
