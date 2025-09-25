@@ -894,19 +894,17 @@ function ErrorCloud({ points, maxError, targetLabel }) {
             const logScaled = logDenominator > 0 ? Math.log10(point.magnitude + 1) / logDenominator : 0;
             const dist = Math.min(logScaled * plotRadius, plotRadius - 4);
 
-            let angle = point.angle % (Math.PI * 2);
-            if (point.signedError < 0 && angle >= -Math.PI / 2 && angle < Math.PI / 2) {
-              angle += Math.PI;
-            } else if (point.signedError < 0 && angle >= Math.PI / 2 && angle < (3 * Math.PI) / 2) {
-              // already left-side oriented
-            } else if (point.signedError >= 0 && (angle < -Math.PI / 2 || angle >= (3 * Math.PI) / 2)) {
-              // right side already
-            } else if (point.signedError >= 0 && angle >= Math.PI / 2 && angle < (3 * Math.PI) / 2) {
-              angle -= Math.PI;
+            let cos = Math.cos(point.angle);
+            const sin = Math.sin(point.angle);
+
+            if (point.signedError >= 0 && cos < 0) {
+              cos = -cos;
+            } else if (point.signedError < 0 && cos > 0) {
+              cos = -cos;
             }
 
-            const x = center + Math.cos(angle) * dist;
-            const y = center + Math.sin(angle) * dist;
+            const x = center + cos * dist;
+            const y = center + sin * dist;
             return (
               <circle
                 key={`${point.participant}-${point.trialNumber}-${idx}`}
