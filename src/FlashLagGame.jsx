@@ -581,6 +581,8 @@ export default function FlashLagGame() {
     mode === MODE_FLASH_LAG
       ? `Modalità flash-lag: ${targetLabel} si muove da sinistra a destra mentre un secondo punto lampeggia brevemente al centro. Quando termina il movimento, fai clic dove pensi che ${targetSubject} fosse al momento del flash.`
       : `Modalità scomparsa: ${targetLabel} si muove da sinistra a destra e ad un certo punto scompare. Fai clic sul punto dove pensi che ${targetSubject} sia scomparso.`;
+  const trimmedParticipant = participant.trim();
+
   const errorPoints = useMemo(() => {
     if (!results.length) return [];
     return results
@@ -595,6 +597,7 @@ export default function FlashLagGame() {
         const magnitude = Math.abs(signedError);
         const seed = `${trial.participant}-${trial.trial}-${trial.timestamp ?? ""}-${index}`;
         const angle = pseudoRandomAngle(seed);
+        const isCurrent = trimmedParticipant && trial.participant === trimmedParticipant;
         return {
           signedError,
           magnitude,
@@ -602,10 +605,11 @@ export default function FlashLagGame() {
           participant: trial.participant,
           trialNumber: trial.trial,
           mode: trial.mode,
+          isCurrent,
         };
       })
       .filter(Boolean);
-  }, [results]);
+  }, [results, trimmedParticipant]);
 
   const maxErrorMagnitude = useMemo(() => {
     if (!errorPoints.length) return 1;
@@ -864,6 +868,7 @@ function RangeField({ label, min, max, step, value, onChange }) {
 const POSITIVE_COLOR = "rgba(96, 165, 250, 0.85)";
 const NEGATIVE_COLOR = "rgba(74, 222, 128, 0.85)";
 const REFERENCE_COLOR = "rgba(248, 113, 113, 0.6)";
+const HIGHLIGHT_COLOR = "#fffb00ff";
 
 function ErrorCloud({ points, maxError, targetLabel }) {
   const size = 260;
@@ -907,13 +912,17 @@ function ErrorCloud({ points, maxError, targetLabel }) {
 
             const x = center + Math.cos(angle) * dist;
             const y = center + Math.sin(angle) * dist;
+            const isPositive = point.signedError >= 0;
+            const fillColor = point.isCurrent ? HIGHLIGHT_COLOR : isPositive ? POSITIVE_COLOR : NEGATIVE_COLOR;
+            const radius = point.isCurrent ? 5.5 : 4;
+
             return (
               <circle
                 key={`${point.participant}-${point.trialNumber}-${idx}`}
                 cx={x}
                 cy={y}
-                r={4}
-                fill={point.signedError >= 0 ? POSITIVE_COLOR : NEGATIVE_COLOR}
+                r={radius}
+                fill={fillColor}
               >
                 <title>
                   {`${point.participant} • Prova ${point.trialNumber}\nErrore: ${point.signedError.toFixed(1)} px`}
