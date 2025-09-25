@@ -585,12 +585,19 @@ export default function FlashLagGame() {
     if (!results.length) return [];
     return results
       .map((trial, index) => {
-        const error = typeof trial.abs_error_px === "number" ? trial.abs_error_px : Math.abs(trial.signed_error_px ?? 0);
-        if (!Number.isFinite(error)) return null;
+        const signedError =
+          typeof trial.signed_error_px === "number"
+            ? trial.signed_error_px
+            : typeof trial.abs_error_px === "number"
+            ? trial.abs_error_px
+            : null;
+        if (signedError == null || !Number.isFinite(signedError)) return null;
+        const magnitude = Math.abs(signedError);
         const seed = `${trial.participant}-${trial.trial}-${trial.timestamp ?? ""}-${index}`;
         const angle = pseudoRandomAngle(seed);
         return {
-          error,
+          signedError,
+          magnitude,
           angle,
           participant: trial.participant,
           trialNumber: trial.trial,
@@ -602,7 +609,7 @@ export default function FlashLagGame() {
 
   const maxErrorMagnitude = useMemo(() => {
     if (!errorPoints.length) return 1;
-    return errorPoints.reduce((m, p) => Math.max(m, p.error), 1);
+    return errorPoints.reduce((m, p) => Math.max(m, p.magnitude), 1);
   }, [errorPoints]);
 
   return (
@@ -854,6 +861,10 @@ function RangeField({ label, min, max, step, value, onChange }) {
   );
 }
 
+const POSITIVE_COLOR = "rgba(96, 165, 250, 0.85)";
+const NEGATIVE_COLOR = "rgba(74, 222, 128, 0.85)";
+const REFERENCE_COLOR = "rgba(248, 113, 113, 0.6)";
+
 function ErrorCloud({ points, maxError, targetLabel }) {
   const size = 260;
   const center = size / 2;
@@ -880,36 +891,63 @@ function ErrorCloud({ points, maxError, targetLabel }) {
             strokeWidth={1.5}
           />
           {points.map((point, idx) => {
-            const errorForLog = Math.max(point.error, 0);
-            const logScaled = logDenominator > 0 ? Math.log10(errorForLog + 1) / logDenominator : 0;
+            const logScaled = logDenominator > 0 ? Math.log10(point.magnitude + 1) / logDenominator : 0;
             const dist = Math.min(logScaled * plotRadius, plotRadius - 4);
-            const x = center + Math.cos(point.angle) * dist;
-            const y = center + Math.sin(point.angle) * dist;
+
+            let angle = point.angle % (Math.PI * 2);
+            if (point.signedError < 0 && angle >= -Math.PI / 2 && angle < Math.PI / 2) {
+              angle += Math.PI;
+            } else if (point.signedError < 0 && angle >= Math.PI / 2 && angle < (3 * Math.PI) / 2) {
+              // already left-side oriented
+            } else if (point.signedError >= 0 && (angle < -Math.PI / 2 || angle >= (3 * Math.PI) / 2)) {
+              // right side already
+            } else if (point.signedError >= 0 && angle >= Math.PI / 2 && angle < (3 * Math.PI) / 2) {
+              angle -= Math.PI;
+            }
+
+            const x = center + Math.cos(angle) * dist;
+            const y = center + Math.sin(angle) * dist;
             return (
               <circle
                 key={`${point.participant}-${point.trialNumber}-${idx}`}
                 cx={x}
                 cy={y}
                 r={4}
-                fill="rgba(96, 165, 250, 0.8)"
+                fill={point.signedError >= 0 ? POSITIVE_COLOR : NEGATIVE_COLOR}
               >
                 <title>
-                  {`${point.participant} • Prova ${point.trialNumber}\nErrore: ${point.error.toFixed(1)} px`}
+                  {`${point.participant} • Prova ${point.trialNumber}\nErrore: ${point.signedError.toFixed(1)} px`}
                 </title>
               </circle>
             );
           })}
-          <circle cx={center} cy={center} r={referenceRadius} fill="rgba(248, 113, 113, 0.6)" />
+          <circle cx={center} cy={center} r={referenceRadius} fill={REFERENCE_COLOR} />
         </svg>
       </div>
       <div className="text-xs text-slate-300 space-y-1">
         <div className="flex items-center gap-2">
           <span
             className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ backgroundColor: "rgba(248, 113, 113, 0.6)" }}
+            style={{ backgroundColor: REFERENCE_COLOR }}
             aria-hidden="true"
           />
           <span className="text-slate-100">Posizione di scomparsa del {targetLabel} (centro)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: POSITIVE_COLOR }}
+            aria-hidden="true"
+          />
+          <span>Davanti</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: NEGATIVE_COLOR }}
+            aria-hidden="true"
+          />
+          <span>Dietro</span>
         </div>
       </div>
     </div>
