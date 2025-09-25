@@ -899,19 +899,12 @@ function ErrorCloud({ points, maxError, targetLabel }) {
             const logScaled = logDenominator > 0 ? Math.log10(point.magnitude + 1) / logDenominator : 0;
             const dist = Math.min(logScaled * plotRadius, plotRadius - 4);
 
-            let angle = point.angle % (Math.PI * 2);
-            if (point.signedError < 0 && angle >= -Math.PI / 2 && angle < Math.PI / 2) {
-              angle += Math.PI;
-            } else if (point.signedError < 0 && angle >= Math.PI / 2 && angle < (3 * Math.PI) / 2) {
-              // already left-side oriented
-            } else if (point.signedError >= 0 && (angle < -Math.PI / 2 || angle >= (3 * Math.PI) / 2)) {
-              // right side already
-            } else if (point.signedError >= 0 && angle >= Math.PI / 2 && angle < (3 * Math.PI) / 2) {
-              angle -= Math.PI;
-            }
+            const collapsed = ((point.angle % Math.PI) + Math.PI) % Math.PI - Math.PI / 2; // [-π/2, π/2]
+            const horizontal = Math.cos(collapsed) * dist * (point.signedError >= 0 ? 1 : -1);
+            const vertical = Math.sin(collapsed) * dist;
 
-            const x = center + Math.cos(angle) * dist;
-            const y = center + Math.sin(angle) * dist;
+            const x = center + horizontal;
+            const y = center + vertical;
             const isPositive = point.signedError >= 0;
             const fillColor = point.isCurrent ? HIGHLIGHT_COLOR : isPositive ? POSITIVE_COLOR : NEGATIVE_COLOR;
             const radius = point.isCurrent ? 5.5 : 4;
