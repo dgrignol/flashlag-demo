@@ -616,6 +616,38 @@ export default function FlashLagGame() {
     return errorPoints.reduce((m, p) => Math.max(m, p.magnitude), 1);
   }, [errorPoints]);
 
+  const exportCSV = useCallback(() => {
+    if (!results.length) return;
+
+    const header = Object.keys(results[0]);
+    const rows = results.map((r) => header.map((key) => r[key] ?? ""));
+
+    const csvParts = [];
+    csvParts.push("PROVE");
+    csvParts.push(header.join(","));
+    csvParts.push(...rows.map((row) => row.join(",")));
+
+    if (summaries.length) {
+      csvParts.push("");
+      csvParts.push("CLASSIFICA");
+      csvParts.push("partecipante,errore_assoluto_medio_px");
+      const ordered = [...summaries].sort((a, b) => a.average_abs_error_px - b.average_abs_error_px);
+      ordered.forEach((entry) => {
+        csvParts.push(`${entry.participant},${entry.average_abs_error_px}`);
+      });
+    }
+
+    const blob = new Blob([csvParts.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `flashlag_export_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [results, summaries]);
+
   return (
     <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
       <div className="w-full max-w-screen-2xl px-4 md:px-8 xl:px-16 mx-auto">
@@ -791,6 +823,15 @@ export default function FlashLagGame() {
                     <ColorSwatch label="Flash" value={flashColor} onChange={setFlashColor} />
                   )}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={exportCSV}
+                  disabled={!results.length}
+                  className={`w-full px-3 py-2 rounded-lg text-sm shadow ${results.length ? "bg-indigo-500 hover:bg-indigo-600" : "bg-slate-700 text-slate-400 cursor-not-allowed"}`}
+                >
+                  Esporta CSV (tutti)
+                </button>
 
                 {/* Moved here: Reset all */}
                 <div className="pt-4 border-t border-slate-700 mt-4">
