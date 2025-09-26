@@ -359,14 +359,29 @@ export default function FlashLagGame() {
 
   // Start a fresh participant without clearing prior results/summaries
   const startNewParticipant = () => {
-    if (!participant.trim()) {
+    const baseName = participant.trim();
+    if (!baseName) {
       setMessage("Inserisci un nuovo nome partecipante.");
       return;
     }
+
+    const usedNames = new Set(results.map((r) => r.participant));
+    let uniqueName = baseName;
+    if (usedNames.has(uniqueName)) {
+      let counter = 1;
+      while (usedNames.has(`${baseName}${counter}`)) {
+        counter += 1;
+      }
+      uniqueName = `${baseName}${counter}`;
+      setParticipant(uniqueName);
+    }
+
     setSummary(null);
     setTrialIdx(0);
     setAwaitingNext(false);
-    setMessage(`Pronto per la prova 1. ${getStartPrompt()}`);
+    setMessage(
+      `${uniqueName !== baseName ? `Nome già usato. Impostato su ${uniqueName}. ` : ""}Pronto per la prova 1. ${getStartPrompt()}`
+    );
   };
 
   // Handle response — only after motion finished AND flash happened
