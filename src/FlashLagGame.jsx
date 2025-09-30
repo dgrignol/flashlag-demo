@@ -76,6 +76,7 @@ export default function FlashLagGame() {
   const [mode, setMode] = useState(MODE_DISAPPEARING);
   const [targetShape, setTargetShape] = useState(TARGET_PACMAN);
   const [showErrorCloud, setShowErrorCloud] = useState(true);
+  const [showExplanation, setShowExplanation] = useState(false);
 
   // Parameters
   const [speed, setSpeed] = useState(280); // px/s
@@ -379,6 +380,7 @@ export default function FlashLagGame() {
     setSummary(null);
     setTrialIdx(0);
     setAwaitingNext(false);
+    setShowExplanation(false);
     setMessage(
       `${uniqueName !== baseName ? `Nome già usato. Impostato su ${uniqueName}. ` : ""}Pronto per la prova 1. ${getStartPrompt()}`
     );
@@ -449,6 +451,7 @@ export default function FlashLagGame() {
         const withoutDup = prev.filter((s) => s.participant !== newSummary.participant);
         return [...withoutDup, newSummary];
       });
+      setShowExplanation(true);
       setMessage(`Tutte le prove completate per ${participant.trim()}. Errore medio = ${round2(avg)} px. Inserisci un altro nome per continuare.`);
       setAwaitingNext(false);
     } else {
@@ -664,7 +667,7 @@ export default function FlashLagGame() {
   }, [results, summaries]);
 
   return (
-    <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6">
+    <div className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center py-6 relative">
       <div className="w-full max-w-screen-2xl px-4 md:px-8 xl:px-16 mx-auto">
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">Il tuo cervello ti inganna?</h1>
         <p className="text-slate-300 mb-4">{introCopy}</p>
@@ -877,6 +880,7 @@ export default function FlashLagGame() {
         <ResultsTable results={results} currentParticipant={participant.trim()} />
         <Leaderboard summaries={summaries} />
       </div>
+      {showExplanation && <ExplanationModal onClose={() => setShowExplanation(false)} />}
     </div>
   );
 }
@@ -1087,6 +1091,45 @@ function Leaderboard({ summaries }) {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function ExplanationModal({ onClose }) {
+  return (
+    <div className="fixed inset-0 z-20 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-slate-900/80" aria-hidden="true" />
+      <div className="relative max-w-2xl w-full bg-slate-800 rounded-2xl shadow-xl p-6 text-sm text-slate-100 space-y-3">
+        <h3 className="text-lg font-semibold">Perché il punto sembra sparire più avanti?</h3>
+        <p>
+          Il nostro cervello non elabora le immagini in tempo reale: c’è sempre un piccolo ritardo tra ciò che arriva agli occhi e
+          ciò che viene percepito. Per compensare, il cervello usa meccanismi predittivi: anticipa la traiettoria degli oggetti in
+          movimento e confronta le previsioni con i segnali visivi in arrivo.
+        </p>
+        <p>
+          Quando un oggetto si muove normalmente, il cervello lo proietta leggermente in avanti. Questo ci aiuta ad agire in tempo
+          (ad esempio per afferrare una palla), ma fa sì che l’oggetto appaia un po’ più avanti della sua reale posizione.
+          Questo fenomeno è chiamato <strong>slancio rappresentazionale</strong> (representational momentum).
+        </p>
+        <p>
+          Quando il punto scompare di colpo, la sparizione genera un segnale improvviso che annulla la proiezione in avanti.
+          Tuttavia, poiché il cervello stava già predicendo il movimento futuro, tendiamo a indicare una posizione leggermente più
+          avanzata di quella reale.
+        </p>
+        <p>
+          Questo dimostra un principio di base della percezione: il cervello non è una macchina fotografica passiva, ma un sistema
+          predittivo che cerca costantemente di stare un passo avanti rispetto al mondo.
+        </p>
+        <div className="pt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold"
+          >
+            Capito
+          </button>
+        </div>
       </div>
     </div>
   );
