@@ -8,6 +8,110 @@ const PACMAN_MIN_MOUTH = 0.12;
 const PACMAN_MAX_MOUTH = 0.5;
 const TARGET_PACMAN = "pacman";
 const TARGET_DOT = "dot";
+const AUTO_NAME_ANIMALS = [
+  "Leone",
+  "Tigre",
+  "Pantera",
+  "Ghepardo",
+  "Giaguaro",
+  "Lupo",
+  "Volpe",
+  "Orso",
+  "Cervo",
+  "Alce",
+  "Cinghiale",
+  "Scoiattolo",
+  "Riccio",
+  "Tasso",
+  "Lontra",
+  "Foca",
+  "Delfino",
+  "Balena",
+  "Squalo",
+  "Polpo",
+  "Calamaro",
+  "Pinguino",
+  "Gabbiano",
+  "Falco",
+  "Aquila",
+  "Gufo",
+  "Corvo",
+  "Pavone",
+  "Cigno",
+  "Airone",
+  "Fenicottero",
+  "Iena",
+  "Zebra",
+  "Giraffa",
+  "Ippopotamo",
+  "Rinoceronte",
+  "Elefante",
+  "Cammello",
+  "Cavallo",
+  "Toro",
+  "Bisonte",
+  "Canguro",
+  "Koala",
+  "Panda",
+  "Lemure",
+  "Scimmia",
+  "Gorilla",
+  "Orangotango",
+  "Armadillo",
+  "Coccodrillo",
+];
+const AUTO_NAME_ADJECTIVES = [
+  "Coraggioso",
+  "Pauroso",
+  "Rapido",
+  "Lento",
+  "Gentile",
+  "Furbo",
+  "Curioso",
+  "Audace",
+  "Calmo",
+  "Vivace",
+  "Silenzioso",
+  "Rumoroso",
+  "Allegro",
+  "Triste",
+  "Saggio",
+  "Astuto",
+  "Fiero",
+  "Agile",
+  "Robusto",
+  "Leggero",
+  "Tenace",
+  "Brillante",
+  "Ombroso",
+  "Sereno",
+  "Nervoso",
+  "Preciso",
+  "Distratto",
+  "Paziente",
+  "Impaziente",
+  "Dolce",
+  "Severo",
+  "Leale",
+  "Selvaggio",
+  "Elegante",
+  "Goffo",
+  "Generoso",
+  "Timido",
+  "Determinato",
+  "Irascibile",
+  "Riflessivo",
+  "Creativo",
+  "Energico",
+  "Instancabile",
+  "Metodico",
+  "Spavaldo",
+  "Prudente",
+  "Entusiasta",
+  "Freddoloso",
+  "Solare",
+  "Notturno",
+];
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -16,9 +120,8 @@ function computeTargetX(w, lead) {
   return w / 2 - lead;
 }
 
-function canStartTrialLogic(trialIndex, isRun, awaiting, name) {
+function canStartTrialLogic(trialIndex, isRun, awaiting) {
   if (isRun) return false;
-  if (!name.trim()) return false;
   if (trialIndex >= 3) return false;
   return trialIndex === 0 ? !awaiting : awaiting;
 }
@@ -30,6 +133,26 @@ function pickRandomOffset(min, max) {
   const raw = Math.random() * (hi - lo) + lo;
   const stepped = Math.round(raw / 5) * 5;
   return clamp(stepped, lo, hi);
+}
+
+function pickRandomWord(words) {
+  return words[Math.floor(Math.random() * words.length)];
+}
+
+function makeAutoParticipantName(usedNames) {
+  const maxAttempts = AUTO_NAME_ANIMALS.length * AUTO_NAME_ADJECTIVES.length;
+  for (let i = 0; i < maxAttempts; i += 1) {
+    const animal = pickRandomWord(AUTO_NAME_ANIMALS);
+    const adjective = pickRandomWord(AUTO_NAME_ADJECTIVES);
+    const candidate = `${animal}-${adjective}`;
+    if (!usedNames.has(candidate)) return candidate;
+  }
+
+  let suffix = 1;
+  while (usedNames.has(`Partecipante-${suffix}`)) {
+    suffix += 1;
+  }
+  return `Partecipante-${suffix}`;
 }
 
 function pseudoRandomAngle(seed) {
@@ -65,6 +188,7 @@ export default function FlashLagGame() {
 
   // NEW: gate for the post-motion response window
   const responseWindowRef = useRef(false);
+  const activeParticipantRef = useRef("");
 
   // UI state
   const [participant, setParticipant] = useState("");
@@ -325,14 +449,17 @@ export default function FlashLagGame() {
 
   // Start a trial
   const startTrial = () => {
-    if (!participant.trim()) {
-      setMessage("Inserisci prima il nome del partecipante.");
-      return;
-    }
-
     cancelAnimationFrame(rafRef.current);
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    const trimmed = participant.trim();
+    const usedNames = new Set(results.map((r) => r.participant));
+    const autoAssigned = !trimmed;
+    const resolvedParticipant = autoAssigned ? makeAutoParticipantName(usedNames) : trimmed;
+
+    activeParticipantRef.current = resolvedParticipant;
+    setParticipant(resolvedParticipant);
 
     posRef.current = padding; // reset to left
     lastTsRef.current = 0;
@@ -354,7 +481,11 @@ export default function FlashLagGame() {
     runningRef.current = true;
     setIsRunning(true);
     setAwaitingNext(false);
-    setMessage(getStartPrompt());
+    setMessage(
+      autoAssigned
+        ? `Nome assegnato automaticamente: ${resolvedParticipant}. ${getStartPrompt()}`
+        : getStartPrompt()
+    );
     rafRef.current = requestAnimationFrame(draw);
   };
 
@@ -407,9 +538,10 @@ export default function FlashLagGame() {
     const truth = clamp(eventXRef.current, padding, width - padding);
     const signedError = clickX - truth;
     const absError = Math.abs(signedError);
+    const trialParticipant = activeParticipantRef.current || participant.trim();
 
     const trial = {
-      participant: participant.trim(),
+      participant: trialParticipant,
       trial: trialIdx + 1,
       mode,
       target_shape: targetShape,
@@ -443,16 +575,16 @@ export default function FlashLagGame() {
     setTrialIdx(completedTrials);
 
     if (completedTrials >= 3) {
-      const rowsThisParticipant = newResults.filter((r) => r.participant === participant.trim());
+      const rowsThisParticipant = newResults.filter((r) => r.participant === trialParticipant);
       const avg = rowsThisParticipant.reduce((a, r) => a + r.abs_error_px, 0) / rowsThisParticipant.length;
-      const newSummary = { participant: participant.trim(), average_abs_error_px: round2(avg) };
+      const newSummary = { participant: trialParticipant, average_abs_error_px: round2(avg) };
       setSummary(newSummary);
       setSummaries((prev) => {
         const withoutDup = prev.filter((s) => s.participant !== newSummary.participant);
         return [...withoutDup, newSummary];
       });
       setShowExplanation(true);
-      setMessage(`Tutte le prove completate per ${participant.trim()}. Errore medio = ${round2(avg)} px. Inserisci un altro nome per continuare.`);
+      setMessage(`Tutte le prove completate per ${trialParticipant}. Errore medio = ${round2(avg)} px. Inserisci un altro nome per continuare.`);
       setAwaitingNext(false);
     } else {
       setMessage('Risposta registrata. Clicca su "Prossima prova" quando sei pronto.');
@@ -528,6 +660,7 @@ export default function FlashLagGame() {
     setTrialIdx(0);
     setAwaitingNext(false);
     setParticipant("");
+    activeParticipantRef.current = "";
     responseWindowRef.current = false;
     eventTriggeredRef.current = false;
     eventXRef.current = null;
@@ -549,7 +682,7 @@ export default function FlashLagGame() {
       console.assert(clamp(5, 0, 10) === 5, "clamp in-range");
       console.assert(round2(1.2345) === 1.23, "round2 works");
       console.assert(computeTargetX(900, 80) === 370, "targetX 900, lead 80 => 450-80");
-      console.assert(canStartTrialLogic(0, false, false, "A") === true, "trial0 start enabled");
+      console.assert(canStartTrialLogic(0, false, false) === true, "trial0 start enabled");
       console.assert(canvasRef.current instanceof HTMLCanvasElement, "canvas exists");
       console.assert(pickRandomOffset(10, 10) === 10, "constant offset range");
       return true;
@@ -587,7 +720,7 @@ export default function FlashLagGame() {
   }, [mode, disappearRange.min, disappearRange.max, flashLead, isRunning]);
 
   const trialsRemaining = Math.max(0, 3 - trialIdx);
-  const canStartTrial = canStartTrialLogic(trialIdx, isRunning, awaitingNext, participant);
+  const canStartTrial = canStartTrialLogic(trialIdx, isRunning, awaitingNext);
   const canStartNewParticipant = !isRunning && trialIdx >= 3;
   const leadLabel =
     mode === MODE_DISAPPEARING
@@ -731,15 +864,8 @@ export default function FlashLagGame() {
               />
             </div>
 
-            <div className="pt-3 flex items-center justify-between gap-3">
+            <div className="pt-3">
               <div className="text-xs text-slate-400">{message}</div>
-              <button
-                type="button"
-                onClick={() => setShowErrorCloud((v) => !v)}
-                className="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200"
-              >
-                {showErrorCloud ? "Nascondi" : "Mostra"} nuvola errori
-              </button>
             </div>
           </div>
 
@@ -841,6 +967,14 @@ export default function FlashLagGame() {
                     <ColorSwatch label="Flash" value={flashColor} onChange={setFlashColor} />
                   )}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowErrorCloud((v) => !v)}
+                  className="w-full px-3 py-2 rounded-lg text-sm shadow bg-slate-700 hover:bg-slate-600 text-slate-200"
+                >
+                  {showErrorCloud ? "Nascondi" : "Mostra"} nuvola errori
+                </button>
 
                 <button
                   type="button"
@@ -995,6 +1129,14 @@ function ErrorCloud({ points, maxError, targetLabel }) {
             aria-hidden="true"
           />
           <span className="text-slate-100">Posizione di scomparsa del {targetLabel} (centro)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: HIGHLIGHT_COLOR }}
+            aria-hidden="true"
+          />
+          <span>Partecipante corrente</span>
         </div>
         <div className="flex items-center gap-2">
           <span
